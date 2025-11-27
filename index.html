@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Reactive Visualizer</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
         /* Basic reset for fullscreen canvas */
         body {
             margin: 0;
@@ -274,6 +275,28 @@
             border-radius: 3px;
             transition: width 0.1s ease;
         }
+
+        #dataHud {
+            position: absolute;
+            top: 110px;
+            left: 20px;
+            width: 240px;
+            padding: 14px 18px;
+            background: rgba(0, 20, 0, 0.6);
+            border: 1px solid rgba(0, 255, 128, 0.4);
+            border-radius: 10px;
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            font-size: 12px;
+            color: #71ffb2;
+            text-shadow: 0 0 6px rgba(0, 255, 128, 0.8);
+            pointer-events: none;
+            box-shadow: 0 0 18px rgba(0, 255, 128, 0.15);
+        }
+
+        #dataHud .line {
+            letter-spacing: 1px;
+            margin: 2px 0;
+        }
     </style>
 
     <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.js"></script>
@@ -288,6 +311,7 @@
         <button data-scene="1">Scene 2: Bass Geometry</button>
         <button data-scene="2">Scene 3: Heightmap</button>
         <button data-scene="3">Scene 4: Faraday Ripple</button>
+        <button data-scene="4">Scene 5: Falling</button>
     </div>
     <div id="hint">
         Drag mouse to rotate, scroll wheel to zoom.
@@ -300,6 +324,7 @@
             <div id="pitchBar"><div id="pitchBarFill" style="width: 0%"></div></div>
         </div>
     </div>
+    <div id="dataHud"></div>
 </div>
 
 <!-- 載入場景文件（必須在主文件之前） -->
@@ -308,6 +333,8 @@
 <script src="scenes/scene-bass.js"></script>
 <script src="scenes/scene-heightmap.js"></script>
 <script src="scenes/scene-faraday.js"></script>
+<script src="scenes/scene-falling.js"></script>
+<script src="scenes/scene-falling.js"></script>
 
 <!-- 載入主文件 -->
 <script src="index.js"></script>

@@ -24,6 +24,17 @@ const CONFIG = {
     VOLUME_HISTORY_SIZE: 20
 };
 
+const createCameraState = (overrides = {}) => ({
+    rotationX: 0,
+    rotationY: 0,
+    zoom: 1,
+    lastMouseX: 0,
+    lastMouseY: 0,
+    dragging: false,
+    enabled: true,
+    ...overrides
+});
+
 // ============================================================================
 // 全局狀態
 // ============================================================================
@@ -32,7 +43,8 @@ const State = {
     isMicOn: false,
     particles: [],
     faradayParticles: [], // 用於 Faraday Ripple 場景的粒子 (3D X, Z 座標)
-    toneRipples: [] // 12 個音調區域的波紋緩衝狀態
+    toneRipples: [], // 12 個音調區域的波紋緩衝狀態
+    cameras: [] // 每個場景的相機狀態
 };
 
 // ============================================================================
@@ -426,19 +438,25 @@ const Scenes = window.Scenes;
 // Camera 模塊 - 相機控制
 // ============================================================================
 const Camera = {
-    rotationX: 0,
-    rotationY: 0,
-    lastMouseX: 0,
-    lastMouseY: 0,
-    dragging: false,
-    zoom: 1.0,
+    getActiveCamera() {
+        if (!State.cameras || State.cameras.length === 0) {
+            State.cameras = [createCameraState()];
+        }
+        if (!State.cameras[State.scene]) {
+            State.cameras[State.scene] = createCameraState();
+        }
+        return State.cameras[State.scene];
+    },
     
     update() {
+        this.currentCam = this.getActiveCamera();
         push();
-        scale(this.zoom);
-        // 改变旋转顺序：先 Y 后 X，以获得更直观的旋转行为
-        rotateY(this.rotationY);
-        rotateX(this.rotationX);
+        if (!this.currentCam || this.currentCam.enabled === false) {
+            return;
+        }
+        scale(this.currentCam.zoom);
+        rotateY(this.currentCam.rotationY);
+        rotateX(this.currentCam.rotationX);
     },
     
     end() {
@@ -446,32 +464,37 @@ const Camera = {
     },
     
     mousePressed() {
-        this.lastMouseX = mouseX;
-        this.lastMouseY = mouseY;
-        this.dragging = true;
+        const cam = this.getActiveCamera();
+        if (!cam) return;
+        cam.lastMouseX = mouseX;
+        cam.lastMouseY = mouseY;
+        cam.dragging = true;
     },
     
     mouseReleased() {
-        this.dragging = false;
+        const cam = this.getActiveCamera();
+        if (!cam) return;
+        cam.dragging = false;
     },
     
     mouseDragged() {
-        if (this.dragging) {
-            let dx = (mouseX - this.lastMouseX) * 0.003;
-            let dy = (mouseY - this.lastMouseY) * 0.003;
-            // 修正方向：往左拖拽看到右边（顺时针），往右拖拽看到左边（逆时针）
-            // 往下拖拽看到顶部，往上拖拽看到底部
-            this.rotationY += dx;  // 恢复原始方向，但配合旋转顺序调整
-            this.rotationX -= dy;  // 保持垂直方向的反转
-            this.lastMouseX = mouseX;
-            this.lastMouseY = mouseY;
+        const cam = this.getActiveCamera();
+        if (cam && cam.dragging) {
+            let dx = (mouseX - cam.lastMouseX) * 0.003;
+            let dy = (mouseY - cam.lastMouseY) * 0.003;
+            cam.rotationY += dx;
+            cam.rotationX -= dy;
+            cam.lastMouseX = mouseX;
+            cam.lastMouseY = mouseY;
         }
         return false;
     },
     
     mouseWheel(event) {
-        this.zoom += -event.delta * 0.0006;
-        this.zoom = constrain(this.zoom, 0.5, 2.4);
+        const cam = this.getActiveCamera();
+        if (!cam) return false;
+        cam.zoom += -event.delta * 0.0006;
+        cam.zoom = constrain(cam.zoom, 0.5, 2.4);
         return false;
     }
 };
@@ -629,6 +652,45 @@ const UI = {
             pitchBarFill.style.width = `${PitchDetection.pitchConfidence * 100}%`;
         }
     }
+,
+    updateDataHud(bands) {
+        const hud = document.getElementById('dataHud');
+        if (!hud) return;
+        if (!State.isMicOn) {
+            hud.innerHTML = `<div class="line">STATUS : MIC OFF</div>`;
+            return;
+        }
+        const sceneNames = ['COSMOS', 'BASS GEO', 'HEIGHTMAP', 'FARADAY', 'FALLING'];
+        const cam = Camera.getActiveCamera ? Camera.getActiveCamera() : null;
+        const note = PitchDetection.currentNoteIndex >= 0 ? PitchDetection.currentNote : '---';
+        const freq = PitchDetection.smoothedFrequency > 0 ? `${PitchDetection.smoothedFrequency.toFixed(1)} Hz` : '--';
+        const low = Math.round(bands.low);
+        const mid = Math.round(bands.mid);
+        const high = Math.round(bands.high);
+        const vol = `${(bands.vol * 100).toFixed(1)}%`;
+        const beat = AudioFeatures.beatFlash > 0.25 ? 'YES' : 'NO';
+        const peak = AudioFeatures.peakFlash > 0.25 ? 'YES' : 'NO';
+        const fps = `${Math.round(frameRate())}`;
+        const camRX = cam ? cam.rotationX.toFixed(2) : '--';
+        const camRY = cam ? cam.rotationY.toFixed(2) : '--';
+        const camZoom = cam ? cam.zoom.toFixed(2) : '--';
+        
+        hud.innerHTML = `
+            <div class="line">SCENE : ${sceneNames[State.scene] || State.scene}</div>
+            <div class="line">PITCH : ${note}</div>
+            <div class="line">FREQ  : ${freq}</div>
+            <div class="line">CONF  : ${(PitchDetection.pitchConfidence * 100).toFixed(0)}%</div>
+            <div class="line">LOW   : ${low}</div>
+            <div class="line">MID   : ${mid}</div>
+            <div class="line">HIGH  : ${high}</div>
+            <div class="line">VOL   : ${vol}</div>
+            <div class="line">BEAT  : ${beat} / PEAK : ${peak}</div>
+            <div class="line">CAM X : ${camRX}</div>
+            <div class="line">CAM Y : ${camRY}</div>
+            <div class="line">ZOOM  : ${camZoom}</div>
+            <div class="line">FPS   : ${fps}</div>
+        `;
+    }
 };
 
 // ============================================================================
@@ -665,6 +727,15 @@ function setup() {
             });
         }
     }
+    
+    // 初始化每個場景的相機狀態
+    State.cameras = [
+        createCameraState({ rotationX: -0.25, rotationY: 0 }),
+        createCameraState({ rotationX: -0.3, rotationY: 0.1 }),
+        createCameraState({ rotationX: -0.45, rotationY: 0 }),
+        createCameraState({ rotationX: -0.2, rotationY: 0, zoom: 0.95 }),
+        createCameraState({ rotationX: -0.35, rotationY: 0.15, zoom: 1.05 })
+    ];
     
     // 初始化 ToneRipples (12 個音調區域的波紋緩衝)
     State.toneRipples = [];
@@ -749,6 +820,8 @@ function draw() {
         
         Scenes.drawFaradayMicrobeads(State.faradayParticles, bands, pitchData, effects, State.toneRipples);
         
+    } else if (State.scene === 4 && typeof Scenes.drawNeonBouncingRings === 'function') {
+        Scenes.drawNeonBouncingRings(bands, PitchDetection.pitchHue, AudioFeatures.peakFlash, AudioFeatures.beatFlash);
     } else if (State.scene === 0 && typeof Scenes.drawCosmosParticles === 'function') {
         Scenes.drawCosmosParticles(bands, PitchDetection.pitchHue, AudioFeatures.peakFlash, AudioFeatures.beatFlash);
     } else if (State.scene === 1 && typeof Scenes.drawBassGeometry === 'function') {
@@ -778,6 +851,7 @@ function draw() {
             Scenes.drawStaticStars();
         }
         pop();
+        UI.updateDataHud({ low: 0, mid: 0, high: 0, vol: 0 });
         return;
     }
     
@@ -817,6 +891,13 @@ function draw() {
             effects,
             State.toneRipples
         );
+    } else if (State.scene === 4 && typeof Scenes.drawNeonBouncingRings === 'function') {
+        Scenes.drawNeonBouncingRings(
+            bands,
+            PitchDetection.pitchHue,
+            AudioFeatures.peakFlash,
+            AudioFeatures.beatFlash
+        );
     } else {
         // 如果場景函數不存在，顯示錯誤信息
         console.warn('Scene function not found for scene:', State.scene);
@@ -827,6 +908,7 @@ function draw() {
     
     // Update UI
     UI.updatePitchDisplay();
+    UI.updateDataHud(bands);
 }
 
 // ============================================================================
