@@ -10,6 +10,8 @@ if (typeof window.Scenes === 'undefined') {
 // 用來存儲所有活動中的圓環與地板撞擊效果
 window.Scenes.activeRings = window.Scenes.activeRings || [];
 window.Scenes.groundImpacts = window.Scenes.groundImpacts || [];
+const MAX_ACTIVE_RINGS = 120;
+const MAX_GROUND_IMPACTS = 200;
 
 const RING_NOTE_HIGH = 78;
 const RING_NOTE_LOW = 54;
@@ -178,11 +180,14 @@ window.Scenes.drawNeonBouncingRings = function(bands, pitchHue, peakFlash, beatF
 
     // 2. 音頻觸發邏輯 (生成新圓環)
     // 限制：音量夠大 且 隨機機率 (避免一次生成太多)
-    let spawnChance = map(bands.vol, 0, 0.5, 0.05, 0.65);
-    spawnChance = constrain(spawnChance, 0.02, 0.7);
-    if (random(1) < spawnChance) {
+    let spawnChance = bands.vol > 0.08
+        ? map(bands.vol, 0.08, 0.5, 0.02, 0.65)
+        : 0;
+    spawnChance = constrain(spawnChance, 0, 0.7);
+    if (random(1) < spawnChance && window.Scenes.activeRings.length < MAX_ACTIVE_RINGS) {
         // 根據音量大小決定生成數量，大聲時可能一次噴多顆
         let count = bands.vol > 0.35 ? 2 : 1;
+        count = min(count, MAX_ACTIVE_RINGS - window.Scenes.activeRings.length);
 
         for(let n=0; n<count; n++) {
             // 隨機 X 位置 (-400 到 400)
@@ -235,6 +240,9 @@ window.Scenes.drawNeonBouncingRings = function(bands, pitchHue, peakFlash, beatF
         pop();
         hit.life -= 10;
         hit.radius += 5;
+    }
+    while (window.Scenes.groundImpacts.length > MAX_GROUND_IMPACTS) {
+        window.Scenes.groundImpacts.shift();
     }
     colorMode(HSB, 360, 100, 100, 1);
     pop();

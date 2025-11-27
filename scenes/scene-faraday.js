@@ -60,9 +60,9 @@ window.Scenes.drawFaradayMicrobeads = function(faradayParticles, bands, pitchDat
         let baseRippleTime = frameCount * 0.05; // 基礎漣漪時間（加快速度）
         let baseRippleFreq = 0.025; // 基礎漣漪頻率
         // 多層基礎漣漪疊加，創造更明顯的波動（增大振幅）
-        let baseRipple1 = sin(distFromCenter * baseRippleFreq - baseRippleTime) * 0.8; // 從 0.4 增加到 0.8
-        let baseRipple2 = sin(distFromCenter * baseRippleFreq * 1.5 - baseRippleTime * 1.2) * 0.4; // 從 0.2 增加到 0.4
-        let baseRipple3 = sin(distFromCenter * baseRippleFreq * 0.7 - baseRippleTime * 0.8) * 0.3; // 新增第三層
+        let baseRipple1 = sin(distFromCenter * baseRippleFreq - baseRippleTime) * 1.2;
+        let baseRipple2 = sin(distFromCenter * baseRippleFreq * 1.5 - baseRippleTime * 1.2) * 0.6;
+        let baseRipple3 = sin(distFromCenter * baseRippleFreq * 0.7 - baseRippleTime * 0.8) * 0.5;
         let baseRipple = baseRipple1 + baseRipple2 + baseRipple3; // 基礎漣漪（更大更明顯）
         let totalAmplitudeInfluence = baseRipple; // 從基礎漣漪開始
         
@@ -91,14 +91,14 @@ window.Scenes.drawFaradayMicrobeads = function(faradayParticles, bands, pitchDat
                 let areaInfluence = index === noteRegion ? 1.0 : 0.5; // 增加交叉影響
                 let distanceDecay = 1.0 / (1.0 + distFromCenter * 0.0003); // 減少衰減
                 
-                let influence = wave * effectiveAmplitude * areaInfluence * angleInfluence * distanceDecay;
+                let influence = wave * effectiveAmplitude * areaInfluence * angleInfluence * distanceDecay * 1.35;
                 totalAmplitudeInfluence += influence;
             }
         });
         
         // 3. 最終 Y 軸高度 (景深)
         // 將總體影響映射到 Y 軸高度（增加範圍，讓波動更明顯）
-        let y = map(totalAmplitudeInfluence, -MAX_TOTAL_AMP * 0.8, MAX_TOTAL_AMP * 0.8, -80, 80);
+        let y = map(totalAmplitudeInfluence, -MAX_TOTAL_AMP * 0.8, MAX_TOTAL_AMP * 0.8, -120, 120);
         
         // 4. 顏色和亮度 (灰階為主，音調標記為輔)
         let finalBrightness = map(totalAmplitudeInfluence, -MAX_TOTAL_AMP, MAX_TOTAL_AMP, 40, 90);
