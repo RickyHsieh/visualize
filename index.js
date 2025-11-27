@@ -80,7 +80,7 @@ const Audio = {
     getFrequencyBands() {
         // 1. 低頻 (Bass): 20-140Hz
         let low = this.getEnergy(20, 140);
-        
+
         // 2. 中頻 (Mid): 140Hz - 2000Hz 
         // (範圍稍微縮小，把 2000Hz 以上讓給高頻)
         let mid = this.getEnergy(140, 2000);
@@ -88,7 +88,7 @@ const Audio = {
         // 3. 高頻 (High): 2000Hz - 16000Hz
         // (範圍擴大：涵蓋了原本的高頻與超高頻區域)
         let rawHigh = this.getEnergy(2000, 16000);
-        
+
         // 【修正高頻沒值】：放大倍率提高到 3.5 倍
         let high = Math.min(rawHigh * 3.5, 255);
 
@@ -112,13 +112,13 @@ const Audio = {
         let maxIndex = 0;
         let sum = 0;
         let count = 0;
-        
+
         let nyquist = sampleRate() / 2;
         let binSize = nyquist / spectrum.length;
-        
-        let start = Math.floor(60 / binSize); 
-        let end = Math.floor(1200 / binSize); 
-        
+
+        let start = Math.floor(60 / binSize);
+        let end = Math.floor(1200 / binSize);
+
         end = Math.min(end, spectrum.length);
 
         for (let i = start; i < end; i++) {
@@ -130,15 +130,15 @@ const Audio = {
                 maxIndex = i;
             }
         }
-        
+
         if (maxVal < 50 || count === 0) {
             return { freq: 0, confidence: 0 };
         }
-        
+
         let avg = sum / count;
         let confidence = avg > 0 ? (maxVal - avg) / 255 : maxVal / 255;
         confidence = constrain(confidence, 0, 1);
-        
+
         let freq = (maxIndex / spectrum.length) * nyquist;
         return { freq, confidence };
     }
@@ -515,7 +515,7 @@ function setup() {
 
     colorMode(HSB, 360, 100, 100, 1);
     noStroke();
-    pixelDensity(1); 
+    pixelDensity(1);
 
     // 1. Cosmos 場景粒子
     for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
@@ -528,12 +528,12 @@ function setup() {
     }
 
     // 2. Faraday Ripple 場景微珠粒子網格
-    let particleSpacing = 14; 
+    let particleSpacing = 14;
     let gridSize = 800;
-    
+
     let gridW = floor(gridSize / particleSpacing);
     let gridH = floor(gridSize / particleSpacing);
-    
+
     State.faradayParticles = [];
 
     for (let j = 0; j < gridH; j++) {
@@ -541,27 +541,27 @@ function setup() {
             let x = map(i, 0, gridW - 1, -gridSize/2, gridSize/2);
             let z = map(j, 0, gridH - 1, -gridSize/2, gridSize/2);
             State.faradayParticles.push({
-                pos: createVector(x, 0, z), 
-                size: 3 
+                pos: createVector(x, 0, z),
+                size: 3
             });
         }
     }
-    
+
     console.log('Faraday particles initialized:', State.faradayParticles.length);
 
     // 相機初始化
     State.cameras = [
-        createCameraState({ rotationX: -0.25, rotationY: 0 }),         
-        createCameraState({ rotationX: -0.3, rotationY: 0.1 }),        
-        createCameraState({ rotationX: -0.45, rotationY: 0 }),         
-        createCameraState({ rotationX: -0.2, rotationY: 0, zoom: 0.95 }), 
-        createCameraState({ rotationX: -0.35, rotationY: 0.15, zoom: 1.05 }) 
+        createCameraState({ rotationX: -0.25, rotationY: 0 }),
+        createCameraState({ rotationX: -0.3, rotationY: 0.1 }),
+        createCameraState({ rotationX: -0.45, rotationY: 0 }),
+        createCameraState({ rotationX: -0.2, rotationY: 0, zoom: 0.95 }),
+        createCameraState({ rotationX: -0.35, rotationY: 0.15, zoom: 1.05 })
     ];
 
     // ToneRipples 初始化
     State.toneRipples = [];
     for (let i = 0; i < 12; i++) {
-        let baseAmp = 0.2 + sin(i * 0.5) * 0.08; 
+        let baseAmp = 0.2 + sin(i * 0.5) * 0.08;
         State.toneRipples.push({
             amplitude: baseAmp,
             baseAmplitude: baseAmp,
@@ -589,7 +589,7 @@ function setup() {
 }
 
 function draw() {
-    background(0); 
+    background(0);
 
     if (!State.isMicOn) {
         push();
@@ -600,7 +600,7 @@ function draw() {
         }
         pop();
         UI.updateDataHud({ low: 0, mid: 0, high: 0, vol: 0 });
-        return; 
+        return;
     }
 
     Audio.update();
@@ -636,13 +636,13 @@ function draw() {
         }
 
         if (ripple.isActive) {
-            ripple.time += 0.25; 
+            ripple.time += 0.25;
         } else {
-            ripple.time += 0.08; 
+            ripple.time += 0.08;
         }
     }
 
-    Camera.update(); 
+    Camera.update();
 
     if (State.scene === 0 && typeof Scenes.drawCosmosParticles === 'function') {
         Scenes.drawCosmosParticles(bands, PitchDetection.pitchHue, AudioFeatures.peakFlash, AudioFeatures.beatFlash);
@@ -661,7 +661,7 @@ function draw() {
             beatFlash: AudioFeatures.beatFlash,
             spectrum: Audio.spectrum
         };
-        
+
         Scenes.drawFaradayMicrobeads(
             State.faradayParticles,
             bands,
@@ -678,7 +678,7 @@ function draw() {
         );
     }
 
-    Camera.end(); 
+    Camera.end();
 
     UI.updatePitchDisplay();
     UI.updateDataHud(bands);
@@ -694,12 +694,12 @@ function mouseReleased() {
 
 function mouseDragged() {
     Camera.mouseDragged();
-    return false; 
+    return false;
 }
 
 function mouseWheel(event) {
     Camera.mouseWheel(event);
-    return false; 
+    return false;
 }
 
 function windowResized() {
