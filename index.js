@@ -21,6 +21,10 @@ const CONFIG = {
     VOLUME_HISTORY_SIZE: 20
 };
 
+if (typeof window !== 'undefined' && typeof window.polySynth === 'undefined') {
+    window.polySynth = null;
+}
+
 const createCameraState = (overrides = {}) => ({
     rotationX: 0,
     rotationY: 0,
@@ -515,7 +519,7 @@ const UI = {
             'BASS GEO': '低頻推高方塊，節拍觸發閃光',
             'HEIGHTMAP': '多頻能量堆疊成等高線',
             'FARADAY': '音調分區改變色彩，波紋維持',
-            'FALLING': '發出聲音出現圓圈，依音調變換光圈顏色，撞擊網格消失'
+            'FALLING': '發出聲音生成圓圈，彈跳時播放合成音，撞擊網格消失'
         };
         const desc = descMap[sceneNames[State.scene]] || '';
         
@@ -596,6 +600,15 @@ function setup() {
     }
     
     Audio.init(); AudioFeatures.init(); UI.setup();
+    if (!window.polySynth) {
+        window.polySynth = new p5.PolySynth();
+        if (window.polySynth.setADSR) {
+            window.polySynth.setADSR(0.01, 0.18, 0.0, 0.35);
+        }
+        if (window.polySynth.amp) {
+            window.polySynth.amp(0.4);
+        }
+    }
     console.log('Faraday particles initialized:', State.faradayParticles.length);
 }
 

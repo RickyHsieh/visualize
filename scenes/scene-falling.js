@@ -11,6 +11,9 @@ if (typeof window.Scenes === 'undefined') {
 window.Scenes.activeRings = window.Scenes.activeRings || [];
 window.Scenes.groundImpacts = window.Scenes.groundImpacts || [];
 
+const RING_NOTE_HIGH = 78;
+const RING_NOTE_LOW = 54;
+
 // 定義圓環粒子類別
 class RingParticle {
     constructor(x, y, bands, pitchHue) {
@@ -34,6 +37,7 @@ class RingParticle {
             : map(high, 0, 255, 90, 150);  // 依音調/高頻變換主色
         this.bounceCount = 0;
         this.requiredBounces = floor(random(1, 4));
+        this.lastImpactFrame = -100;
         
         // 生命週期屬性
         this.isDead = false;              // 是否該被移除
@@ -55,6 +59,7 @@ class RingParticle {
             this.pos.y = this.floorLevel - this.radius; // 修正位置避免卡住
             this.vel.y *= -0.6; // 彈跳係數 (反轉速度並消耗能量)
             this.bounceCount++;
+            this.triggerImpactSound(abs(this.vel.y));
             window.Scenes.groundImpacts.push({
                 x: this.pos.x,
                 z: this.pos.z,
@@ -91,6 +96,20 @@ class RingParticle {
                 this.isDead = true;
             }
         }
+    }
+
+    triggerImpactSound(impactSpeed) {
+        if (typeof window === 'undefined' || !window.polySynth) return;
+        if (impactSpeed < 1.2) return;
+        if (frameCount - this.lastImpactFrame < 5) return;
+        this.lastImpactFrame = frameCount;
+        
+        const clampedRadius = constrain(this.radius, 25, 85);
+        const note = map(clampedRadius, 25, 85, RING_NOTE_HIGH, RING_NOTE_LOW);
+        let velocity = map(impactSpeed, 0, 18, 0.08, 0.6);
+        velocity = constrain(velocity, 0.08, 0.65);
+        const freq = midiToFreq(note + random(-0.5, 0.5));
+        window.polySynth.play(freq, velocity, 0, 0.25);
     }
 
     draw() {
