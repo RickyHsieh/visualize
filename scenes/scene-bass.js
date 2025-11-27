@@ -1,118 +1,137 @@
 // File: scenes/scene-bass.js
 // ============================================================================
-// Scene 1: Bass Geometry (低音幾何) - 優化版
+// Scene 1: Bass Geometry V2 (低音機械矩陣 - 動態旋轉與故障風)
 // ============================================================================
 
-// 確保 Scenes 對象存在
 if (typeof window.Scenes === 'undefined') {
     window.Scenes = {};
 }
+
+// 專屬於此場景的浮動粒子狀態
+window.Scenes.bassParticles = [];
 
 window.Scenes.drawBassGeometry = function(bands, pitchHue, peakFlash, beatFlash) {
     push();
     
     // ------------------------------------------
-    // 1. 頂部瞬時閃光 (Peak Flash Overlay)
+    // 1. 鏡頭震動與設置 (Camera Shake on Beat)
     // ------------------------------------------
-    if (peakFlash > 0.1) {
+    let shake = beatFlash > 0.5 ? random(-3, 3) : 0;
+    
+    rotateX(PI * 0.28 + map(mouseY, 0, height, -0.1, 0.1)); // 允許滑鼠微調視角
+    translate(0 + shake, -50 + shake, -100); // 稍微後退一點看全景
+    
+    // ------------------------------------------
+    // 2. 燈光與氛圍 (Lighting)
+    // ------------------------------------------
+    // 根據節拍改變環境光亮度
+    ambientLight(40 + beatFlash * 60); 
+    
+    // 雙色燈光系統：一邊冷色，一邊暖色，增加層次
+    pointLight(pitchHue, 80, 100, -300, -200, 200); // 跟隨音高顏色的主光
+    pointLight(200, 50, 80, 300, 100, 200);   // 補光
+    
+    // ------------------------------------------
+    // 3. 能量浮粒系統 (Rising Floating Cubes)
+    // ------------------------------------------
+    // 當低音強烈時，生成新的浮動粒子
+    if (bands.low > 180 && random(1) < 0.4) {
+        window.Scenes.bassParticles.push({
+            x: random(-width/2, width/2),
+            y: random(100, 300), // 從下方生成
+            z: random(-200, 200),
+            size: random(5, 15),
+            speed: random(3, 8),
+            life: 255
+        });
+    }
+    
+    // 繪製並更新粒子
+    for (let i = window.Scenes.bassParticles.length - 1; i >= 0; i--) {
+        let p = window.Scenes.bassParticles[i];
+        p.y -= p.speed; // 向上飄
+        p.life -= 4;    // 漸漸消失
+        
+        if (p.life <= 0) {
+            window.Scenes.bassParticles.splice(i, 1);
+            continue;
+        }
+        
         push();
-        resetMatrix();
-        fill(0, 0, 100, peakFlash * 0.35); // 白色閃光
-        rect(-width/2, -height/2, width, height);
+        translate(p.x, p.y, p.z);
+        noStroke();
+        // 粒子顏色跟隨高頻閃爍
+        fill(pitchHue, 60, 100, p.life / 255);
+        box(p.size);
         pop();
     }
     
-    // 設置基礎旋轉和視角
-    rotateX(PI * 0.25);
-    translate(0, -80, 0);
-    
     // ------------------------------------------
-    // 2. 光照和材質設定 (增強立體感)
+    // 4. 主幾何矩陣 (The Kinetic Grid)
     // ------------------------------------------
     
-    // 環境光：提供基礎亮度 (較低)
-    ambientLight(40); 
+    let gridW = 55;
+    let gridH = 55;
+    let t = frameCount * 0.03;
+    let lowEnergy = bands.low / 255.0; // 0.0 ~ 1.0
     
-    // 主定向光：提供主要的立體感和陰影方向 (冷色調)
-    directionalLight(150, 180, 200, -0.5, -0.8, -0.2); 
+    // 決定是否進入「故障線框模式」 (Glitch Mode)
+    // 當節拍非常強時，切換為線框，視覺更通透
+    let isWireframeMode = beatFlash > 0.6;
     
-    // 輔助點光：位於近處，提供強烈的邊緣高光 (暖色調)
-    pointLight(255, 200, 150, 0, -200, 300);
-    
-    // ------------------------------------------
-    // 3. 幾何網格生成
-    // ------------------------------------------
-    
-    let gridW = 50;
-    let gridH = 30;
-    let t = frameCount * 0.02;
-    let beatBoost = 1 + beatFlash * 0.5; // 節拍增幅
-    let lowEnergy = bands.low / 255.0; // 低頻能量 (0-1)
-    
-    // 迭代生成網格方體
-    for (let x = -width/2; x <= width/2; x += gridW) {
-        for (let y = -height/4; y <= height/2; y += gridH) {
+    for (let x = -width/1.8; x <= width/1.8; x += gridW) {
+        for (let y = -height/2; y <= height/2; y += gridH) {
             
-            let dx = map(x, -width/2, width/2, -1, 1);
-            let dy = map(y, -height/4, height/2, -1, 1);
+            // 計算與中心的距離 (用於波浪延遲)
+            let distFromCenter = dist(x, y, 0, 0);
             
-            // 高度計算：噪音基線 + 低頻衝擊
-            let n = noise(dx * 1.2 + t * 0.3, dy * 1.2, t * 0.2);
-            let hVal = ((n - 0.5) * 80 + map(bands.low, 0, 255, 0, 250)) * beatBoost; // 調整基線噪音影響
+            // 噪音計算：加入距離因素，讓波浪從中心擴散
+            let noiseScale = 0.004;
+            let n = noise(x * noiseScale + t, y * noiseScale, t * 0.5);
+            
+            // 高度計算：低頻推動高度，且距離中心越近跳得越高
+            let amp = map(bands.low, 0, 255, 10, 350);
+            let hVal = (n - 0.3) * amp * (1.5 - distFromCenter/1000); 
             
             push();
-            translate(x, y, hVal * 0.7);
+            translate(x, y, hVal * 0.5);
             
-            // --- 材質與顏色 ---
+            // --- 【關鍵升級】動態旋轉 ---
+            // 根據方塊的高度和低頻能量進行旋轉
+            // 越高的方塊轉越快，創造機械扭動感
+            let rotAmount = hVal * 0.005 * lowEnergy; 
+            rotateX(rotAmount);
+            rotateY(rotAmount * 1.5);
             
-            // 基礎色相：音高優先，低頻次之
-            let baseHue = PitchDetection.currentNoteIndex >= 0 
-                ? pitchHue 
-                : map(bands.low, 0, 255, 200, 260); // 冷色調
+            // --- 材質與顏色邏輯 ---
+            let baseHue = PitchDetection.currentNoteIndex >= 0 ? pitchHue : 220;
+            let hue = (baseHue + map(distFromCenter, 0, 800, 0, 60)) % 360;
             
-            // 色相動態：隨 X 軸和高頻輕微變化
-            let hue = (baseHue + map(x, -width/2, width/2, -15, 15)) % 360;
-            let saturation = map(bands.mid, 0, 255, 40, 90) + beatFlash * 15; // 中頻/節拍控制飽和度
-            let brightness = 85 + lowEnergy * 15; // 亮度受低頻影響
+            if (isWireframeMode) {
+                // [故障模式]：只畫線框，發光
+                noFill();
+                strokeWeight(2);
+                stroke(hue, 90, 100); // 高亮線條
+            } else {
+                // [實體模式]：金屬質感
+                noStroke();
+                // 亮度隨高度變化，越高越亮
+                let br = map(hVal, -100, 200, 40, 100);
+                // 金屬反光材質
+                specularMaterial(hue, 70, br);
+                shininess(50);
+            }
             
-            // 設置高光材質 (Shininess 越大，高光越集中，金屬感越強)
-            shininess(60 + lowEnergy * 80); 
-            specularMaterial(hue, saturation, brightness, 0.95);
+            // 根據音量微調方塊大小 (鼓點時變大)
+            let boxScale = 1.0;
+            if (beatFlash > 0.2) boxScale = 1.0 + beatFlash * 0.3;
             
-            // 邊框線條：使用亮色或純白色，增強視覺區分度
-            stroke(0, 0, 100, 0.3); // 柔和的白線
-            strokeWeight(1.0);
+            // 繪製
+            box(gridW * 0.85 * boxScale, gridH * 0.85 * boxScale, max(10, abs(hVal)));
             
-            // 繪製方體
-            box(gridW * 0.8, gridH * 0.8, max(2, hVal * 0.6));
             pop();
         }
     }
     
     pop();
-    
-    // ------------------------------------------
-    // 4. 頂部脈衝光暈 (Top Flare)
-    // ------------------------------------------
-    let peak = max(bands.low, bands.mid, bands.high);
-    if (peak > 170 || peakFlash > 0.3) {
-        push();
-        // 確保光暈不受主場景旋轉的影響，但位置要對齊中心
-        resetMatrix();
-        translate(0, -height * 0.12, 0); // 放在畫面頂部附近
-        
-        rotateX(frameCount * 0.01);
-        
-        let flareHue = PitchDetection.currentNoteIndex >= 0 
-            ? pitchHue 
-            : (map(peak, 0, 255, 200, 320) % 360);
-            
-        // 使用 ADD 模式讓光暈疊加更強烈
-        blendMode(ADD); 
-        fill(flareHue, 80, 100, 0.15 + peakFlash * 0.15); // 透明度受 peakFlash 影響
-        sphere(width * 0.8, 48, 24);
-        blendMode(BLEND);
-        
-        pop();
-    }
 };

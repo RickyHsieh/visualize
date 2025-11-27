@@ -13,6 +13,8 @@ const CONFIG = {
 
     // 場景配置
     PARTICLE_COUNT: 1500, // Cosmos 場景粒子數
+    HEIGHTMAP_ROWS: 60,
+    HEIGHTMAP_COLS: 90,
 
     // 音頻檢測範圍
     BEAT_THRESHOLD: 0.1,
@@ -468,41 +470,30 @@ const UI = {
 
         let pitchDisplay = document.getElementById('pitchDisplay');
         let pitchNote = document.getElementById('pitchNote');
-        let pitchFreq = document.getElementById('pitchFreq');
-        let pitchConfidenceValue = document.getElementById('pitchConfidenceValue');
-        let pitchBarFill = document.getElementById('pitchBarFill');
 
         if (!pitchDisplay) return;
 
         pitchDisplay.style.display = 'block';
 
         if (pitchNote) {
-            pitchNote.textContent = PitchDetection.currentNote || '0.0 Hz';
+            const displayFreq = PitchDetection.smoothedFrequency > 0
+                ? PitchDetection.smoothedFrequency
+                : PitchDetection.currentFrequency;
+            const freqText = `${Math.max(displayFreq, 0).toFixed(1)} Hz`;
+            pitchNote.textContent = freqText;
 
-            // 根據音高改變文字顏色
+            // 根據音高改變文字顏色與光暈
             if (PitchDetection.currentNoteIndex >= 0) {
                 let rgb = PitchDetection.hsbToRgb(PitchDetection.pitchHue, 80, 95);
                 pitchNote.style.color = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+                pitchNote.style.textShadow = `
+                    0 0 3px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.75),
+                    0 0 10px rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4)
+                `;
             } else {
-                pitchNote.style.color = '#ffffff';
+                pitchNote.style.color = '#d6fffc';
+                pitchNote.style.textShadow = '0 0 3px rgba(140,255,240,0.75), 0 0 10px rgba(140,255,240,0.4)';
             }
-        }
-
-        if (pitchFreq) {
-            let displayFreq = PitchDetection.smoothedFrequency > 0
-                ? PitchDetection.smoothedFrequency
-                : PitchDetection.currentFrequency;
-            if (displayFreq > 40) {
-                pitchFreq.textContent = `${displayFreq.toFixed(1)} Hz`;
-            } else {
-                pitchFreq.textContent = `${Math.max(displayFreq, 0).toFixed(1)} Hz`;
-            }
-        }
-
-        if (pitchConfidenceValue && pitchBarFill) {
-            let confidencePercent = (PitchDetection.pitchConfidence * 100).toFixed(0);
-            pitchConfidenceValue.textContent = `${confidencePercent}%`;
-            pitchBarFill.style.width = `${PitchDetection.pitchConfidence * 100}%`;
         }
     },
 

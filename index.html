@@ -201,15 +201,25 @@
             transform: translateX(-50%);
             pointer-events: none;
             text-align: center;
-            background: rgba(0, 0, 0, 0.2);
+            background: transparent;
             padding: 15px 30px;
             border-radius: 10px;
             /* 關鍵修改：取消 min-width，改用 width fit-content */
             width: auto;
             max-width: 80%;
-            backdrop-filter: blur(5px);
             border: none;
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+            box-shadow: none;
+        }
+
+        #pitchNote {
+            font-family: 'Share Tech Mono', 'Courier New', monospace;
+            font-size: 68px;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: #d6fffc;
+            text-shadow:
+                0 0 3px rgba(120, 255, 245, 0.75),
+                0 0 10px rgba(120, 255, 245, 0.4);
         }
 
         #dataHud {
@@ -329,11 +339,7 @@
             }
 
             #pitchNote {
-                font-size: 32px; /* 字體變小 */
-            }
-
-            #pitchFreq {
-                font-size: 14px;
+                font-size: 34px; /* 字體變小 */
             }
 
             /* 2. 數據說明塊 (綠色那個) 縮小 */
@@ -396,12 +402,7 @@
     <div id="hint">Drag mouse to rotate, scroll wheel to zoom.</div>
 
     <div id="pitchDisplay" style="display: none;">
-        <div id="pitchNote">Listening...</div>
-        <div id="pitchFreq">-- Hz</div>
-        <div id="pitchConfidence">
-            <div>Confidence: <span id="pitchConfidenceValue">0%</span></div>
-            <div id="pitchBar"><div id="pitchBarFill"></div></div>
-        </div>
+        <div id="pitchNote">0.0 Hz</div>
     </div>
 
     <div id="dataHud">
