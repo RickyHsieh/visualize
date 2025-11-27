@@ -78,29 +78,29 @@ window.Scenes.drawParticleHeightmap = function(bands, pitchHue, peakFlash, beatF
     pop();
     
     // Particle sparks
-    push();
-    translate(0, map(bands.high, 0, 255, 20, 120), 0);
-    for (let i = 0; i < 200; i++) {
-        let angle = (i / 200) * TWO_PI + frameCount * 0.01;
-        let r = 200 + (i % 10) * 2 + map(bands.mid, 0, 255, 0, 80);
-        let x = cos(angle) * r;
-        let y = sin(angle) * r * 0.25;
-        let z = sin(i * 0.3 + frameCount * 0.05) * 30;
-        push();
-        translate(x, y, z);
+    // push();
+    // translate(0, map(bands.high, 0, 255, 20, 120), 0);
+    // for (let i = 0; i < 200; i++) {
+    //     let angle = (i / 200) * TWO_PI + frameCount * 0.01;
+    //     let r = 200 + (i % 10) * 2 + map(bands.mid, 0, 255, 0, 80);
+    //     let x = cos(angle) * r;
+    //     let y = sin(angle) * r * 0.25;
+    //     let z = sin(i * 0.3 + frameCount * 0.05) * 30;
+    //     push();
+    //     translate(x, y, z);
         
-        let sparkHue = PitchDetection.currentNoteIndex >= 0 
-            ? (pitchHue + map(i, 0, 200, -30, 30)) % 360
-            : map(i, 0, 200, 0, 360);
-        let sparkBrightness = map(bands.high, 0, 255, 40, 100) + peakFlash * 20;
+    //     let sparkHue = PitchDetection.currentNoteIndex >= 0 
+    //         ? (pitchHue + map(i, 0, 200, -30, 30)) % 360
+    //         : map(i, 0, 200, 0, 360);
+    //     let sparkBrightness = map(bands.high, 0, 255, 40, 100) + peakFlash * 20;
         
-        fill(sparkHue, 80, sparkBrightness, 0.9);
-        let sparkSize = 1.6;
-        if (spectrum.length > 0) {
-            sparkSize += map(spectrum[i % spectrum.length] || 0, 0, 255, 0, 3) * (1 + beatFlash * 0.2);
-        }
-        sphere(sparkSize);
-        pop();
-    }
-    pop();
+    //     fill(sparkHue, 80, sparkBrightness, 0.9);
+    //     let sparkSize = 1.6;
+    //     if (spectrum.length > 0) {
+    //         sparkSize += map(spectrum[i % spectrum.length] || 0, 0, 255, 0, 3) * (1 + beatFlash * 0.2);
+    //     }
+    //     sphere(sparkSize);
+    //     pop();
+    // }
+    // pop();
 };
