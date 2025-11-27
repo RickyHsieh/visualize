@@ -49,7 +49,7 @@ const State = {
 };
 
 // ============================================================================
-// Audio 模塊 - 音頻處理與分析
+// Audio 模塊 - 音頻處理與分析 (針對人聲優化版)
 // ============================================================================
 const Audio = {
     mic: null,
@@ -57,7 +57,8 @@ const Audio = {
     spectrum: [],
 
     init() {
-        this.fft = new p5.FFT(0.9, 1024);
+        // 0.8 的平滑度比 0.9 反應更快一點，適合人聲的動態
+        this.fft = new p5.FFT(0.8, 1024);
     },
 
     update() {
@@ -66,20 +67,44 @@ const Audio = {
         }
     },
 
-    getEnergy(band) {
-        return this.fft ? this.fft.getEnergy(band) : 0;
+    getEnergy(low, high) {
+        return this.fft ? this.fft.getEnergy(low, high) : 0;
     },
 
     getLevel() {
         return this.mic ? this.mic.getLevel() : 0;
     },
 
-    // 獲取標準化的頻段能量與總音量
+    // 獲取標準化的頻段能量與總音量 (已針對視覺化優化)
     getFrequencyBands() {
+        // 1. 低頻 (Bass): 20-140Hz
+        // 涵蓋男聲基頻與節奏重拍
+        let low = this.getEnergy(20, 140);
+        
+        // 2. 中頻 (Mid): 改為 140Hz - 2500Hz (關鍵修改)
+        // 舊代碼只抓到 400Hz，這導致大部分人聲(400-2000Hz)被忽略
+        // 現在這個範圍能抓到女聲基頻以及人聲的"咬字"與"共鳴"
+        let mid = this.getEnergy(140, 2500);
+
+        // 3. 高頻 (High): 2500Hz - 10000Hz
+        // 涵蓋氣音、嘶嘶聲、鈸
+        let rawHigh = this.getEnergy(2500, 10000);
+        
+        // 【解決高頻沒值的問題】：
+        // 高頻能量通常很小，我們手動乘以 2.5 倍來放大它，讓視覺效果更明顯
+        // 使用 min 確保不超過 255
+        let high = Math.min(rawHigh * 2.5, 255);
+
+        // 4. 超高頻 (Ultra): 10000Hz+ (空氣感)
+        // 同樣做放大處理
+        let rawUltra = this.getEnergy(10000, 16000);
+        let ultra = Math.min(rawUltra * 4.0, 255);
+
         return {
-            low: this.getEnergy("bass"),      // 20-140Hz
-            mid: this.getEnergy("lowMid"),    // 140-400Hz
-            high: this.getEnergy("treble"),   // 2000-6000Hz
+            low,
+            mid,
+            high,
+            ultra,
             vol: this.getLevel()
         };
     },
@@ -94,9 +119,20 @@ const Audio = {
         let maxIndex = 0;
         let sum = 0;
         let count = 0;
-        // 忽略極低頻和高頻噪音區
-        let start = 2;
-        let end = Math.floor(spectrum.length / 2);
+        
+        // 【人聲優化】：限制搜尋範圍
+        // 人聲基頻通常不會超過 1200Hz。
+        // 搜尋太高的頻率容易把"氣音"誤判為音高，導致數值亂跳。
+        let nyquist = sampleRate() / 2;
+        let binSize = nyquist / spectrum.length; // 約 21.5Hz
+        
+        // 從約 60Hz (index 3) 開始搜，到約 1200Hz 結束
+        let start = Math.floor(60 / binSize); 
+        let end = Math.floor(1200 / binSize); 
+        
+        // 確保不超出陣列範圍
+        end = Math.min(end, spectrum.length);
+
         for (let i = start; i < end; i++) {
             let val = spectrum[i];
             sum += val;
@@ -106,14 +142,16 @@ const Audio = {
                 maxIndex = i;
             }
         }
-        if (maxVal < 1 || count === 0) {
+        
+        // 增加一個噪音門檻，太小聲就不算偵測到
+        if (maxVal < 50 || count === 0) {
             return { freq: 0, confidence: 0 };
         }
+        
         let avg = sum / count;
-        // 計算簡單的置信度
         let confidence = avg > 0 ? (maxVal - avg) / 255 : maxVal / 255;
         confidence = constrain(confidence, 0, 1);
-        let nyquist = sampleRate() / 2;
+        
         let freq = (maxIndex / spectrum.length) * nyquist;
         return { freq, confidence };
     }
@@ -123,7 +161,7 @@ const Audio = {
 // Pitch Detection 模塊 - 音高檢測與平滑處理
 // ============================================================================
 const PitchDetection = {
-    currentNote: "i am Listening",
+    currentNote: "0.0 Hz",
     currentFrequency: 0,
     smoothedFrequency: 0,
     pitchConfidence: 0,
@@ -145,7 +183,9 @@ const PitchDetection = {
                 ? freq
                 : lerp(this.smoothedFrequency, freq, 0.4);
 
-            this.currentNote = this.freqToNote(freq);
+            this.freqToNote(freq); // 更新 currentNoteIndex 供顏色使用
+            const displayFreq = this.smoothedFrequency > 0 ? this.smoothedFrequency : freq;
+            this.currentNote = `${displayFreq.toFixed(1)} Hz`;
 
             // 計算對應的色相
             if (this.currentNoteIndex >= 0) {
@@ -159,7 +199,8 @@ const PitchDetection = {
             // 沒有檢測到足夠強的音高時，慢慢衰減
             this.pitchConfidence = lerp(this.pitchConfidence, 0, 0.12);
             this.currentFrequency = 0;
-            this.currentNote = "i am Listening";
+            const displayFreq = Math.max(this.smoothedFrequency, 0);
+            this.currentNote = `${displayFreq.toFixed(1)} Hz`;
             this.currentNoteIndex = -1;
             this.pitchHue = lerp(this.pitchHue, 220, 0.1); // 回到預設藍色
             this.smoothedFrequency = lerp(this.smoothedFrequency, 0, 0.12);
@@ -171,7 +212,7 @@ const PitchDetection = {
         this.smoothedFrequency = 0;
         this.pitchConfidence = 0;
         this.currentNoteIndex = -1;
-        this.currentNote = "i am Listening";
+        this.currentNote = "0.0 Hz";
     },
 
     // 將頻率轉換為音符名稱與索引
@@ -436,13 +477,7 @@ const UI = {
         pitchDisplay.style.display = 'block';
 
         if (pitchNote) {
-            let noteText = "i am Listening";
-            // 優先顯示檢測到的音符名稱
-            if (PitchDetection.currentNote &&
-                PitchDetection.currentNote !== "i am Listening") {
-                noteText = PitchDetection.currentNote;
-            }
-            pitchNote.textContent = noteText;
+            pitchNote.textContent = PitchDetection.currentNote || '0.0 Hz';
 
             // 根據音高改變文字顏色
             if (PitchDetection.currentNoteIndex >= 0) {
@@ -460,7 +495,7 @@ const UI = {
             if (displayFreq > 40) {
                 pitchFreq.textContent = `${displayFreq.toFixed(1)} Hz`;
             } else {
-                pitchFreq.textContent = "i am Listening";
+                pitchFreq.textContent = `${Math.max(displayFreq, 0).toFixed(1)} Hz`;
             }
         }
 
@@ -484,11 +519,12 @@ const UI = {
         const cam = Camera.getActiveCamera();
 
         // 準備顯示數據
-        const note = PitchDetection.currentNoteIndex >= 0 ? PitchDetection.currentNote : '---';
+        const note = PitchDetection.currentNote || '0.0 Hz';
         const freq = PitchDetection.smoothedFrequency > 0 ? `${PitchDetection.smoothedFrequency.toFixed(1)} Hz` : '--';
-        const low = Math.round(bands.low);
-        const mid = Math.round(bands.mid);
-        const high = Math.round(bands.high);
+        const low = Math.round(bands.low || 0);
+        const mid = Math.round(bands.mid || 0);
+        const high = Math.round(bands.high || 0);
+        const ultra = Math.round(bands.ultra || 0);
         const vol = `${(bands.vol * 100).toFixed(1)}%`;
         const beat = AudioFeatures.beatFlash > 0.25 ? 'YES' : 'NO';
         const peak = AudioFeatures.peakFlash > 0.25 ? 'YES' : 'NO';
@@ -516,6 +552,7 @@ const UI = {
             <div class="line">低頻 : ${low}</div>
             <div class="line">中頻 : ${mid}</div>
             <div class="line">高頻 : ${high}</div>
+            <div class="line">超高頻 : ${ultra}</div>
             <div class="line">音量 : ${vol}</div>
             <div class="line">節拍 : ${beat} / 峰值 : ${peak}</div>
             <div class="line">Cam X: ${camRX}</div>
@@ -554,22 +591,30 @@ function setup() {
     }
 
     // 2. Faraday Ripple 場景微珠粒子網格 (3D 平面)
-    let particleSpacing = 12;
+    // 2. Faraday Ripple 場景微珠粒子網格 (3D 平面)
+    // 【關鍵修正】：間距改為 14 或 15。
+    // 如果設為 6 會產生 17000 個粒子，配合 box() 會導致瀏覽器崩潰！
+    let particleSpacing = 14; 
     let gridSize = 800;
+    
     let gridW = floor(gridSize / particleSpacing);
     let gridH = floor(gridSize / particleSpacing);
+    
+    // 清空並重新生成
+    State.faradayParticles = [];
 
     for (let j = 0; j < gridH; j++) {
         for (let i = 0; i < gridW; i++) {
-            // 在 XZ 平面上創建網格點
             let x = map(i, 0, gridW - 1, -gridSize/2, gridSize/2);
             let z = map(j, 0, gridH - 1, -gridSize/2, gridSize/2);
             State.faradayParticles.push({
-                pos: createVector(x, 0, z), // 初始 Y=0
-                size: 3
+                pos: createVector(x, 0, z), 
+                size: 3 
             });
         }
     }
+    
+    console.log('Faraday particles initialized:', State.faradayParticles.length);
 
     // --- 初始化相機狀態 (為每個場景設置預設視角) ---
     State.cameras = [
@@ -627,7 +672,7 @@ function draw() {
             Scenes.drawStaticStars();
         }
         pop();
-        UI.updateDataHud({ low: 0, mid: 0, high: 0, vol: 0 });
+        UI.updateDataHud({ low: 0, mid: 0, high: 0, ultra: 0, vol: 0 });
         return; // 結束本幀繪製
     }
 

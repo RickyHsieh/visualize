@@ -1,140 +1,181 @@
 // scene-faraday.js
-// Scene 4: Faraday Microbead Ripple (微珠法拉第波紋)
-// 3D 粒子波紋場景，音調區域劃分，波紋疊加與緩衝。
+// Scene 4: Faraday Raindrops (Hz Color + Volume Amp + Flat Default + Big Voxels)
 
 if (typeof window.Scenes === 'undefined') {
     window.Scenes = {};
 }
 
-/**
- * 繪製 3D 聲波壓力場景。
- * @param {Array} faradayParticles - 粒子的陣列，3D 座標 (x, y, z)。
- * @param {object} bands - 頻率能量數據 {low, mid, high, vol}。
- * @param {object} pitchData - 音高數據 {currentNote, currentPitchIndex}。
- * @param {object} effects - 效果數據 {peakFlash, beatFlash, spectrum}。
- * @param {Array} ToneRipples - 12 個音調區域的波紋緩衝狀態。
- */
-window.Scenes.drawFaradayMicrobeads = function(faradayParticles, bands, pitchData, effects, ToneRipples) {
-    let low = bands.low, mid = bands.mid, high = bands.high, vol = bands.vol;
-    
+// 狀態管理
+window.Scenes.faradayRipplesState = {
+    ripples: [],       // 存儲波紋
+    lastSpawnTime: 0,  // 生成冷卻
+    prevEnergy: 0,     // 能量偵測
+    gridSize: 800      // 需與 index.js 一致
+};
+
+window.Scenes.drawFaradayMicrobeads = function(faradayParticles, bands, pitchData, effects) {
+    // 安全檢查
+    if (!faradayParticles || faradayParticles.length === 0) return;
+
+    const state = window.Scenes.faradayRipplesState;
+    const time = millis();
+
     // ------------------------------------------
-    // 3D 視角設置 (相對於 Camera.update())
+    // 1. 觸發邏輯：聲音生成帶有顏色的漣漪
+    // ------------------------------------------
+    
+    // 計算能量突波
+    let currentEnergy = (bands.low || 0) + (bands.mid || 0) + (bands.high || 0);
+    let energyDiff = currentEnergy - state.prevEnergy;
+    state.prevEnergy = currentEnergy;
+
+    // 觸發條件
+    let isTransients = energyDiff > 10; 
+    let isSustained = bands.vol > 0.02; 
+    let cooldown = 50; 
+
+    if (time - state.lastSpawnTime > cooldown) {
+        if (isTransients || isSustained || effects.beatFlash > 0.1) {
+            
+            // --- 位置隨機 ---
+            let halfGrid = state.gridSize / 2;
+            let rx = random(-halfGrid, halfGrid);
+            let rz = random(-halfGrid, halfGrid);
+            
+            // --- 顏色 (Hz -> Hue) ---
+            // 這是關鍵：生成的瞬間決定這個波紋的顏色
+            let targetHue = 200; // 預設
+            let freq = pitchData.currentFrequency;
+            
+            if (freq > 50) {
+                // 使用 Log 對數映射，符合人耳對音高的感知
+                // 50Hz(紅) -> 1000Hz(紫)
+                targetHue = map(Math.log(freq), Math.log(50), Math.log(1000), 0, 280);
+                targetHue = constrain(targetHue, 0, 360);
+            } else {
+                // 若無音高，隨機產生冷色調
+                targetHue = random(180, 260);
+            }
+
+            // --- 振幅 (Volume -> Amplitude) ---
+            // 聲音越大，波浪越高
+            let strength = map(bands.vol, 0, 0.5, 1.0, 5.0);
+            strength = constrain(strength, 1.0, 6.0); 
+
+            state.ripples.push({
+                x: rx,
+                z: rz,
+                startTime: time,
+                // 波高設定
+                amplitude: 70 * strength, 
+                frequency: map(bands.high || 0, 0, 255, 0.025, 0.045),
+                speed: 0.35,     
+                decay: 0.0025,   
+                lifespan: 3000,
+                hue: targetHue   // 記住這個波紋的顏色
+            });
+            
+            state.lastSpawnTime = time;
+        }
+    }
+
+    // 清理過期波紋
+    for (let i = state.ripples.length - 1; i >= 0; i--) {
+        if (time - state.ripples[i].startTime > state.ripples[i].lifespan) {
+            state.ripples.splice(i, 1);
+        }
+    }
+
+    // ------------------------------------------
+    // 2. 物理計算與渲染
     // ------------------------------------------
     push();
+    rotateX(PI * 0.35); 
+    translate(0, 0, 0); 
     
-    // 設置視角：俯視平面
-    rotateX(PI * 0.4); 
-    translate(0, 100, 0); // 將平面向下移動一點，以便看到高度
-    
-    // 1. 設置中心點 (X=0, Z=0)
-    let centerX = 0;
-    let centerZ = 0;
+    noStroke();
 
-    // 2. 基礎波紋參數
-    let rippleDensity = map(mid, 0, 255, 0.01, 0.03); // 中頻影響波紋密度
-    
-    // 12個音階的顏色映射
-    const NOTE_COLORS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
-    const NOTE_ANGLES = [];
-    for (let i = 0; i < 12; i++) {
-        NOTE_ANGLES.push((i / 12) * TWO_PI);
-    }
-    
-    // ------------------------------------------
-    // 繪製粒子微珠 (3D 核心循環)
-    // ------------------------------------------
+    // 優化：只計算最新的 12 個波紋
+    let activeRipples = state.ripples.slice(-12);
+    let activeCount = activeRipples.length;
+
     for (let p of faradayParticles) {
         let x = p.pos.x;
         let z = p.pos.z;
         
-        // 1. 幾何計算
-        let distFromCenter = dist(x, z, centerX, centerZ); // 使用 XZ 平面距離
-        let angle = atan2(z, x); // 使用 XZ 平面角度
-        if (angle < 0) angle += TWO_PI;
-        
-        let noteRegion = floor((angle / TWO_PI) * 12);
-        noteRegion = constrain(noteRegion, 0, 11);
-        
-        // 2. 波幅疊加計算 (核心)
-        // 首先添加基礎漣漪（從中心不斷擴散，確保始終有波動）
-        let baseRippleTime = frameCount * 0.05; // 基礎漣漪時間（加快速度）
-        let baseRippleFreq = 0.025; // 基礎漣漪頻率
-        // 多層基礎漣漪疊加，創造更明顯的波動（增大振幅）
-        let baseRipple1 = sin(distFromCenter * baseRippleFreq - baseRippleTime) * 1.2;
-        let baseRipple2 = sin(distFromCenter * baseRippleFreq * 1.5 - baseRippleTime * 1.2) * 0.6;
-        let baseRipple3 = sin(distFromCenter * baseRippleFreq * 0.7 - baseRippleTime * 0.8) * 0.5;
-        let baseRipple = baseRipple1 + baseRipple2 + baseRipple3; // 基礎漣漪（更大更明顯）
-        let totalAmplitudeInfluence = baseRipple; // 從基礎漣漪開始
-        
-        const MAX_TOTAL_AMP = 12 * 1.5 + 1.5; // 理論上所有波紋的最大振幅之和（包括基礎漣漪，增大以適應更大的基礎波動）
-        
-        // 疊加所有音調區域的漣漪
-        ToneRipples.forEach((ripple, index) => {
-            // 確保基礎振幅始終存在（即使很小）
-            let effectiveAmplitude = ripple.amplitude || ripple.baseAmplitude || 0.2;
+        let totalY = 0;           // 疊加後的高度
+        let maxInfluence = 0;     // 用於判定顏色權重
+        let activeColorH = 220;   // 預設顏色 (靜止時的顏色)
+
+        // --- 波動疊加迴圈 ---
+        for (let i = 0; i < activeCount; i++) {
+            let r = activeRipples[i];
             
-            // 降低閾值，讓所有漣漪都參與計算
-            if (effectiveAmplitude > 0.0001) { 
-                // 波紋運動: 距離 * 密度 - 漣漪時間
-                let waveOffset = distFromCenter * rippleDensity - ripple.time;
-                let wave = sin(waveOffset);
-                
-                // 角度影響力
-                let regionAngle = NOTE_ANGLES[index];
-                let angleDiff = abs(angle - regionAngle);
-                if (angleDiff > PI) angleDiff = TWO_PI - angleDiff;
-                
-                let angleInfluence = 1.0 - (angleDiff / (PI / 6)); 
-                angleInfluence = constrain(angleInfluence, 0, 1);
-                
-                // 區域影響: 交叉效果
-                let areaInfluence = index === noteRegion ? 1.0 : 0.5; // 增加交叉影響
-                let distanceDecay = 1.0 / (1.0 + distFromCenter * 0.0003); // 減少衰減
-                
-                let influence = wave * effectiveAmplitude * areaInfluence * angleInfluence * distanceDecay * 1.35;
-                totalAmplitudeInfluence += influence;
+            // 距離計算 (平方優化)
+            let dx = x - r.x;
+            let dz = z - r.z;
+            let distSq = dx*dx + dz*dz;
+            
+            if (distSq < 1440000) { // 半徑 1200 內
+                let d = Math.sqrt(distSq);
+                let age = time - r.startTime;
+                let waveRadius = age * r.speed;
+
+                // 波紋有效範圍
+                if (d < waveRadius + 100 && d > waveRadius - 600) {
+                    let distanceDecay = 1 / (1 + d * 0.001); 
+                    let timeDecay = Math.exp(-age * r.decay);
+                    
+                    // 下壓波形 (-cos)
+                    let phase = d * r.frequency - age * 0.015;
+                    let waveVal = -Math.cos(phase); 
+                    
+                    let currentAmp = waveVal * r.amplitude * timeDecay * distanceDecay;
+                    
+                    totalY += currentAmp;
+
+                    // 顏色競爭：誰的振幅大，這個粒子就顯示誰的顏色
+                    let influence = Math.abs(currentAmp);
+                    if (influence > maxInfluence) {
+                        maxInfluence = influence;
+                        activeColorH = r.hue;
+                    }
+                }
             }
-        });
-        
-        // 3. 最終 Y 軸高度 (景深)
-        // 將總體影響映射到 Y 軸高度（增加範圍，讓波動更明顯）
-        let y = map(totalAmplitudeInfluence, -MAX_TOTAL_AMP * 0.8, MAX_TOTAL_AMP * 0.8, -120, 120);
-        
-        // 4. 顏色和亮度 (灰階為主，音調標記為輔)
-        let finalBrightness = map(totalAmplitudeInfluence, -MAX_TOTAL_AMP, MAX_TOTAL_AMP, 40, 90);
-        
-        let saturation = 0;
-        let hue = 0;
-        
-        if (ToneRipples[noteRegion].amplitude > 0.05) {
-             // 只有音調被激發時才顯示顏色
-             hue = NOTE_COLORS[noteRegion]; 
-             saturation = map(ToneRipples[noteRegion].amplitude, 0.05, 1.0, 30, 80); 
         }
+
+        // 【關鍵】：移除了 noise 噪音，所以沒聲音時 totalY 會是絕對的 0 (平整)
+
+        // --- 繪製粒子 ---
         
-        fill(hue, saturation, finalBrightness, 1.0);
+        let displayY = constrain(totalY, -350, 350);
+        let displacement = Math.abs(displayY);
         
-        // 繪製粒子
+        // 透明度：只有動起來的時候才變得不透明，靜止時稍微透明一點更有質感
+        let alpha = map(displacement, 0, 50, 100, 255);
+        
+        // 亮度：根據高度打光
+        let br = map(displayY, -150, 150, 40, 100);
+        
+        // 飽和度：平靜時低飽和(灰)，動起來變鮮豔
+        let sat = map(displacement, 0, 30, 0, 90);
+        
+        // 顏色邏輯：
+        // 如果有波紋影響 (maxInfluence > 1)，顯示波紋顏色
+        // 否則顯示預設的深藍灰色
+        let hue = maxInfluence > 1 ? activeColorH : 215;
+
+        fill(hue, sat, br, alpha / 255);
+        
         push();
-        translate(x, y, z); // 設置粒子 X, Y(高度), Z 位置
-        sphere(p.size * map(vol, 0, 0.3, 1, 2)); // 尺寸受音量影響
+        translate(x, displayY, z);
+        
+        // 顆粒大小：靜止時 10，波動時變大到 18 (大顆粒設定)
+        let pSize = 10.0 + map(displacement, 0, 150, 0, 8.0);
+        
+        box(pSize); 
         pop();
     }
     
-    // ------------------------------------------
-    // 繪製中心光源 (保持對齊)
-    // ------------------------------------------
-    let lightHue = PitchDetection.currentNoteIndex >= 0 
-        ? NOTE_COLORS[PitchDetection.currentNoteIndex]
-        : 220;
-    
-    fill(lightHue, 80, 100, 0.4);
-    noStroke();
-    
-    push();
-    translate(0, 0, 0); // 確保光源在平面中心 (Y=0)
-    sphere(20); 
     pop();
-    
-    pop(); // 結束 3D 視角設置
 };
