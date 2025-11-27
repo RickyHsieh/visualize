@@ -10,7 +10,6 @@ const CONFIG = {
     // 音高檢測
     A4: 440, // 標準音高基準
     NOTES: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
-    PITCH_MODEL_URL: 'https://cdn.jsdelivr.net/gh/ml5js/ml5-data@main/models/pitch-detection/crepe/',
     
     // 場景配置
     PARTICLE_COUNT: 1500,
@@ -18,8 +17,6 @@ const CONFIG = {
     HEIGHTMAP_ROWS: 60,
     
     // 音頻檢測範圍
-    PITCH_MIN_FREQ: 80,
-    PITCH_MAX_FREQ: 1200,
     BEAT_THRESHOLD: 0.1,
     VOLUME_HISTORY_SIZE: 20
 };
@@ -80,6 +77,37 @@ const Audio = {
             high: this.getEnergy("treble"),   // 2000-6000Hz
             vol: this.getLevel()
         };
+    },
+    
+    getDominantFrequency() {
+        if (!this.spectrum || this.spectrum.length === 0) {
+            return { freq: 0, confidence: 0 };
+        }
+        let spectrum = this.spectrum;
+        let maxVal = 0;
+        let maxIndex = 0;
+        let sum = 0;
+        let count = 0;
+        let start = 2;
+        let end = Math.floor(spectrum.length / 2);
+        for (let i = start; i < end; i++) {
+            let val = spectrum[i];
+            sum += val;
+            count++;
+            if (val > maxVal) {
+                maxVal = val;
+                maxIndex = i;
+            }
+        }
+        if (maxVal < 1 || count === 0) {
+            return { freq: 0, confidence: 0 };
+        }
+        let avg = sum / count;
+        let confidence = avg > 0 ? (maxVal - avg) / 255 : maxVal / 255;
+        confidence = constrain(confidence, 0, 1);
+        let nyquist = sampleRate() / 2;
+        let freq = (maxIndex / spectrum.length) * nyquist;
+        return { freq, confidence };
     }
 };
 
@@ -87,8 +115,6 @@ const Audio = {
 // Pitch Detection 模塊 - 音高檢測
 // ============================================================================
 const PitchDetection = {
-    pitch: null,
-    audioContext: null,
     currentNote: "i am Listening",
     currentFrequency: 0,
     smoothedFrequency: 0,
@@ -96,53 +122,40 @@ const PitchDetection = {
     currentNoteIndex: -1,
     pitchHue: 200,
     
-    init() {
-        // 初始化在 setupUI 中完成
+    update() {
+        if (!State.isMicOn) {
+            this.reset();
+            return;
+        }
+        const { freq, confidence } = Audio.getDominantFrequency();
+        if (freq > 40 && confidence > 0.02) {
+            this.pitchConfidence = lerp(this.pitchConfidence, confidence, 0.3);
+            this.currentFrequency = freq;
+            this.smoothedFrequency = this.smoothedFrequency === 0
+                ? freq
+                : lerp(this.smoothedFrequency, freq, 0.4);
+            this.currentNote = this.freqToNote(freq);
+            if (this.currentNoteIndex >= 0) {
+                this.pitchHue = (this.currentNoteIndex * 30 + 180) % 360;
+            } else {
+                this.pitchHue = map(freq, 40, sampleRate() / 2, 200, 360);
+            }
+        } else {
+            this.pitchConfidence = lerp(this.pitchConfidence, 0, 0.12);
+            this.currentFrequency = 0;
+            this.currentNote = "i am Listening";
+            this.currentNoteIndex = -1;
+            this.pitchHue = lerp(this.pitchHue, 220, 0.1);
+            this.smoothedFrequency = lerp(this.smoothedFrequency, 0, 0.12);
+        }
     },
     
-    // PitchDetection 模塊的 update 函數 (替換原代碼)
-    update() {
-        if (!State.isMicOn) return;
-        
-        // 1. 平滑頻率過渡：ML5 提供的頻率數據
-        if (this.currentFrequency > 40) { // 只有在有效檢測到時才進行平滑
-            // 加快平滑速度
-            this.smoothedFrequency = lerp(this.smoothedFrequency, this.currentFrequency, 0.4);
-        } else {
-            // 無檢測信號時，緩慢衰減到零
-            this.smoothedFrequency = lerp(this.smoothedFrequency, 0, 0.1);
-        }
-        
-        // 2. 更新音符顯示 (使用平滑後的頻率)
-        // 注意：freqToNote() 已經在 gotPitch() 和 detectFromFFT() 中調用
-        // 這裡只需要確保顯示正確
-        if (this.smoothedFrequency > 40) {
-            // 如果 smoothedFrequency 有效，確保音符和索引已更新
-            if (this.currentNoteIndex < 0 || this.currentNote === "i am Listening") {
-                this.currentNote = this.freqToNote(this.smoothedFrequency);
-            }
-        } else {
-            // When frequency decays to near zero, show "i am Listening"
-            if (Audio.getLevel() < 0.01) { 
-                this.currentNote = "i am Listening";
-                this.currentNoteIndex = -1;
-            } else {
-                // Keep last note for visual stability
-                this.pitchConfidence = lerp(this.pitchConfidence, 0, 0.1);
-            }
-        }
-        
-        // 3. 更新音高驅動的色相
-        if (this.currentNoteIndex >= 0) {
-            this.pitchHue = (this.currentNoteIndex * 30 + 180) % 360;
-        } else {
-            this.pitchHue = lerp(this.pitchHue, 220, 0.1); // 無效時返回預設藍色
-        }
-        
-        // 如果 ML5 沒有提供頻率，使用 FFT 備用方法
-        if (this.currentFrequency === 0 || this.currentFrequency < 40) {
-            this.detectFromFFT();
-        }
+    reset() {
+        this.currentFrequency = 0;
+        this.smoothedFrequency = 0;
+        this.pitchConfidence = 0;
+        this.currentNoteIndex = -1;
+        this.currentNote = "i am Listening";
     },
     
     freqToNote(frequency) {
@@ -153,134 +166,6 @@ const PitchDetection = {
         let octave = Math.floor((n_rounded + 69) / 12) - 1;
         this.currentNoteIndex = noteIndex;
         return CONFIG.NOTES[noteIndex] + octave;
-    },
-    
-    detectFromFFT() {
-        if (!Audio.spectrum || Audio.spectrum.length === 0) {
-            this.currentFrequency = 0;
-            this.pitchConfidence = 0;
-            return;
-        }
-        
-        // 檢查整體音量（降低閾值）
-        let overallVolume = 0;
-        for (let i = 0; i < Audio.spectrum.length; i++) {
-            overallVolume += Audio.spectrum[i];
-        }
-        overallVolume /= Audio.spectrum.length;
-        
-        // 降低音量閾值，讓檢測更容易觸發
-        if (overallVolume < 2) return;
-        
-        // 人聲頻率範圍
-        let minFreq = CONFIG.PITCH_MIN_FREQ;
-        let maxFreq = CONFIG.PITCH_MAX_FREQ;
-        let sampleRate = 44100;
-        let nyquist = sampleRate / 2;
-        let minBin = floor((minFreq / nyquist) * Audio.spectrum.length);
-        let maxBin = floor((maxFreq / nyquist) * Audio.spectrum.length);
-        
-        // 加權峰值檢測
-        let maxAmp = 0;
-        let maxIndex = 0;
-        
-        for (let i = minBin; i < maxBin && i < Audio.spectrum.length; i++) {
-            let freq = (i / Audio.spectrum.length) * nyquist;
-            let weight = 1.0;
-            if (freq >= 100 && freq <= 500) {
-                weight = 1.5;
-            } else if (freq >= 80 && freq <= 100) {
-                weight = 1.2;
-            }
-            
-            let weightedAmp = Audio.spectrum[i] * weight;
-            if (weightedAmp > maxAmp) {
-                maxAmp = weightedAmp;
-                maxIndex = i;
-            }
-        }
-        
-        let detectedFreq = (maxIndex / Audio.spectrum.length) * nyquist;
-        
-        // 計算置信度（降低閾值）
-        let confidence = 0;
-        if (maxAmp > 5) { // 從 8 降到 5
-            let sum = 0;
-            let count = 0;
-            for (let i = minBin; i < maxBin && i < Audio.spectrum.length; i++) {
-                sum += Audio.spectrum[i];
-                count++;
-            }
-            let avg = count > 0 ? sum / count : 0;
-            let ratio = maxAmp / max(avg, 1);
-            // 降低觸發閾值，從 1.1 降到 1.05
-            confidence = constrain(map(ratio, 1.05, 3, 0.1, 0.85), 0, 1);
-        }
-        
-        // 使用 HPS 提高準確度（降低閾值）
-        let hpsFreq = this.detectPitchHPS(Audio.spectrum, sampleRate);
-        if (hpsFreq > 0 && confidence > 0.2) { // 從 0.4 降到 0.2
-            detectedFreq = hpsFreq;
-            confidence = min(confidence * 1.2, 1.0);
-        }
-        
-        // 更新結果（降低閾值）
-        if (detectedFreq >= minFreq && detectedFreq <= maxFreq && confidence > 0.05) { // 從 0.1 降到 0.05
-            this.currentFrequency = detectedFreq;
-            this.pitchConfidence = confidence;
-            // 確保 currentNoteIndex 被更新
-            this.freqToNote(detectedFreq);
-        } else {
-            // 只有在完全沒有信號時才重置
-            if (overallVolume < 1 || maxAmp < 3) { // 降低重置閾值
-                this.currentFrequency = 0;
-                this.pitchConfidence = 0;
-                this.currentNoteIndex = -1;
-            } else {
-                // 即使置信度低，也嘗試更新（用於顯示）
-                if (detectedFreq >= minFreq && detectedFreq <= maxFreq && maxAmp > 3) {
-                    this.currentFrequency = detectedFreq;
-                    this.pitchConfidence = max(confidence, 0.1); // 至少給 0.1 的置信度
-                    this.freqToNote(detectedFreq);
-                }
-            }
-        }
-    },
-    
-    detectPitchHPS(spectrum, sampleRate) {
-        let nyquist = sampleRate / 2;
-        let spectrumLength = spectrum.length;
-        let minFreq = 80;
-        let maxFreq = 2000;
-        let minBin = floor((minFreq / nyquist) * spectrumLength);
-        let maxBin = floor((maxFreq / nyquist) * spectrumLength);
-        
-        let hpsLength = floor(maxBin / 4);
-        let hps = new Array(hpsLength).fill(1);
-        
-        for (let i = 0; i < hpsLength; i++) {
-            for (let harmonic = 1; harmonic <= 4; harmonic++) {
-                let idx = i * harmonic;
-                if (idx < spectrumLength) {
-                    hps[i] *= spectrum[idx] / 255.0;
-                }
-            }
-        }
-        
-        let maxHPS = 0;
-        let maxHPSIndex = 0;
-        for (let i = minBin; i < hpsLength; i++) {
-            if (hps[i] > maxHPS) {
-                maxHPS = hps[i];
-                maxHPSIndex = i;
-            }
-        }
-        
-        if (maxHPS > 0.01) {
-            return (maxHPSIndex / spectrumLength) * nyquist;
-        }
-        
-        return 0;
     },
     
     hsbToRgb(h, s, b) {
@@ -313,37 +198,6 @@ const PitchDetection = {
             g: Math.round((g + m) * 255),
             b: Math.round((blue + m) * 255)
         };
-    },
-    
-    // ml5.js 回調
-    modelLoaded() {
-        console.log('Pitch detection model loaded!');
-        this.pitch.getPitch(this.gotPitch.bind(this));
-    },
-    
-    gotPitch(error, frequency) {
-        if (error) {
-            console.error('Pitch detection error:', error);
-            // 如果 ML5 失敗，使用 FFT 備用方法
-            this.detectFromFFT();
-        } else if (frequency) {
-            // ML5/CREPE 模型已經足夠穩定，我們直接更新原始頻率
-            this.currentFrequency = frequency;
-            // 確保 currentNoteIndex 被正確更新
-            this.freqToNote(frequency); // 這會更新 currentNoteIndex
-            this.pitchConfidence = 0.9; // ML5 應給予高置信度
-            
-            // 確保平滑頻率更新得更快，用於視覺平滑
-            this.smoothedFrequency = lerp(this.smoothedFrequency, this.currentFrequency, 0.5); // 加快 lerp 速度
-        } else {
-            // 如果 frequency 為 null 或 undefined，使用 FFT 備用方法
-            this.detectFromFFT();
-        }
-        
-        // 持續調用以保持檢測
-        if (State.isMicOn && this.pitch) {
-            this.pitch.getPitch(this.gotPitch.bind(this));
-        }
     }
 };
 
@@ -551,24 +405,6 @@ const UI = {
             micBtn.classList.add('active');
             micBtn.disabled = false;
             
-            // Initialize pitch detection
-            try {
-                PitchDetection.audioContext = getAudioContext();
-                if (typeof ml5 !== 'undefined' && ml5.pitchDetection) {
-                    let micStream = Audio.mic.stream || Audio.mic.input || (Audio.mic.mediaStream ? Audio.mic.mediaStream : null);
-                    if (micStream) {
-                        PitchDetection.pitch = ml5.pitchDetection(
-                            CONFIG.PITCH_MODEL_URL,
-                            PitchDetection.audioContext,
-                            micStream,
-                            PitchDetection.modelLoaded.bind(PitchDetection)
-                        );
-                    }
-                }
-            } catch (pitchErr) {
-                console.warn('Pitch detection initialization failed:', pitchErr);
-            }
-            
         } catch (err) {
             console.error('Microphone initialization error:', err);
             micBtn.textContent = 'Failed, allow Mic';
@@ -674,21 +510,30 @@ const UI = {
         const camRX = cam ? cam.rotationX.toFixed(2) : '--';
         const camRY = cam ? cam.rotationY.toFixed(2) : '--';
         const camZoom = cam ? cam.zoom.toFixed(2) : '--';
+        const descMap = {
+            'COSMOS': '音高控制色彩，頻譜驅動波動',
+            'BASS GEO': '低頻推高方塊，節拍觸發閃光',
+            'HEIGHTMAP': '多頻能量堆疊成等高線',
+            'FARADAY': '音調分區改變色彩，波紋維持',
+            'FALLING': '發出聲音出現圓圈，依音調變換光圈顏色，撞擊網格消失'
+        };
+        const desc = descMap[sceneNames[State.scene]] || '';
         
         hud.innerHTML = `
-            <div class="line">SCENE : ${sceneNames[State.scene] || State.scene}</div>
-            <div class="line">PITCH : ${note}</div>
-            <div class="line">FREQ  : ${freq}</div>
-            <div class="line">CONF  : ${(PitchDetection.pitchConfidence * 100).toFixed(0)}%</div>
-            <div class="line">LOW   : ${low}</div>
-            <div class="line">MID   : ${mid}</div>
-            <div class="line">HIGH  : ${high}</div>
-            <div class="line">VOL   : ${vol}</div>
-            <div class="line">BEAT  : ${beat} / PEAK : ${peak}</div>
-            <div class="line">CAM X : ${camRX}</div>
-            <div class="line">CAM Y : ${camRY}</div>
-            <div class="line">ZOOM  : ${camZoom}</div>
-            <div class="line">FPS   : ${fps}</div>
+            <div class="line">場景 : ${sceneNames[State.scene] || State.scene}</div>
+            <div class="line">音高 : ${note}</div>
+            <div class="line">頻率 : ${freq}</div>
+            <div class="line">置信 : ${(PitchDetection.pitchConfidence * 100).toFixed(0)}%</div>
+            <div class="line">低頻 : ${low}</div>
+            <div class="line">中頻 : ${mid}</div>
+            <div class="line">高頻 : ${high}</div>
+            <div class="line">音量 : ${vol}</div>
+            <div class="line">節拍 : ${beat} / 峰值 : ${peak}</div>
+            <div class="line">Cam X: ${camRX}</div>
+            <div class="line">Cam Y: ${camRY}</div>
+            <div class="line">Zoom : ${camZoom}</div>
+            <div class="line">FPS  : ${fps}</div>
+            <div class="desc">${desc}</div>
         `;
     }
 };

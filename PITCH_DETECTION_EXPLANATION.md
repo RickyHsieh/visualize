@@ -1,46 +1,40 @@
-# 音调检测原理与运作方式
+# 音調偵測原理（現行版本）
 
-## 一、音调检测的原理
+專案目前 **完全使用 p5.FFT** 做峰值分析，再把主頻轉換成音名。若想要更精準的 AI 音名，可額外載入 ml5/CREPE，但預設不使用。
 
-### 1. **ML5.js CREPE 模型（主要方法）**
-- **原理**：使用深度学习模型 CREPE (Convolutional Representation for Pitch Estimation)
-- **工作方式**：
-  1. 从麦克风获取音频流
-  2. 将音频流输入 CREPE 模型
-  3. 模型分析音频并返回频率（Hz）
-  4. 通过 `gotPitch()` 回调函数接收结果
-  5. 持续调用 `getPitch()` 保持实时检测
+---
 
-### 2. **FFT + HPS 备用方法**
-- **原理**：当 ML5 失败或未加载时使用
-- **工作方式**：
-  1. 使用 FFT (Fast Fourier Transform) 分析频谱
-  2. 在 80-1200 Hz 范围内寻找峰值（人声范围）
-  3. 使用 HPS (Harmonic Product Spectrum) 提高准确度
-  4. 计算置信度，过滤噪声
+## 1. FFT 峰值分析（預設）
+1. 使用 `p5.FFT` 取得即時頻譜 (`Audio.spectrum`)。
+2. 在頻譜上尋找最大能量的 bin，推算對應的頻率 `freq`。
+3. 以峰值與平均能量之比計算簡易置信度 `confidence`。
+4. 若 `freq > 40 Hz` 且置信度足夠，即視為目前的主音高。
 
-### 3. **频率到音符转换**
-- **公式**：`n = 12 * log2(frequency / 440)`
-- **基准**：A4 = 440 Hz
-- **结果**：将频率转换为音符名称（如 C4, D#3）和索引（0-11）
+優點：零延遲、在 `draw()` 迴圈內即可使用，非常適合視覺化。  
+缺點：同時會偵測到泛音，但對視覺效果通常是加分的。
 
-## 二、当前问题分析
+---
 
-### 问题 1：ML5 模型可能未正确加载
-- **原因**：micStream 获取失败或模型加载失败
-- **症状**：`gotPitch()` 回调不触发或返回 null
+## 2. 頻率轉音名
+- 公式：`n = 12 * log2(freq / 440)`，其中 440 Hz = A4。
+- 取整數後對 12 取餘數得到音階索引（0 ~ 11）。
+- 這個索引用於顏色映射（例如 Faraday 12 分區／Falling 彗星顏色）。
 
-### 问题 2：FFT 备用方法被禁用
-- **原因**：代码中注释掉了 `detectFromFFT()`
-- **症状**：ML5 失败时没有备用检测
+---
 
-### 问题 3：currentNoteIndex 未正确更新
-- **原因**：`freqToNote()` 可能在某些情况下未调用
-- **症状**：音调区域不变色
+## 3. 可選：ml5/CREPE
+若未來想顯示更精準的音名或使用 AI 音高模型，可重新載入：
 
-## 三、修复方案
+```html
+<script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+```
 
-1. **启用 FFT 备用方法**：当 ML5 失败时自动使用
-2. **确保 currentNoteIndex 更新**：在每次频率更新时调用 `freqToNote()`
-3. **添加错误处理**：ML5 失败时自动降级到 FFT
+然後把 `PitchDetection` 換成 CREPE 模式即可（程式碼已保留 FFT 管線，方便切換）。
+
+---
+
+## 常見擴充
+1. 只想要頻譜資料：直接使用 `Audio.spectrum` 或 `Audio.getFrequencyBands()`。
+2. 想顯示主頻 Hz：使用 `PitchDetection.currentFrequency`（FFT 結果）。
+3. 想換成自己的峰值演算法：修改 `Audio.getDominantFrequency()` 即可。 
 
