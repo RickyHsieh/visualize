@@ -10,6 +10,7 @@ if (typeof window.Scenes === 'undefined') {
 // 用來存儲所有活動中的圓環與地板撞擊效果
 window.Scenes.activeRings = window.Scenes.activeRings || [];
 window.Scenes.groundImpacts = window.Scenes.groundImpacts || [];
+window.Scenes.fallingFramesSinceSpawn = window.Scenes.fallingFramesSinceSpawn || 0;
 const MAX_ACTIVE_RINGS = 120;
 const MAX_GROUND_IMPACTS = 200;
 
@@ -180,11 +181,19 @@ window.Scenes.drawNeonBouncingRings = function(bands, pitchHue, peakFlash, beatF
 
     // 2. 音頻觸發邏輯 (生成新圓環)
     // 限制：音量夠大 且 隨機機率 (避免一次生成太多)
-    let spawnChance = bands.vol > 0.08
-        ? map(bands.vol, 0.08, 0.5, 0.02, 0.65)
-        : 0;
+    let spawnChance = 0;
+    if (bands.vol > 0.05) {
+        spawnChance = map(bands.vol, 0.05, 0.5, 0.015, 0.65);
+    } else if (bands.vol > 0.015) {
+        spawnChance = 0.01;
+    }
     spawnChance = constrain(spawnChance, 0, 0.7);
-    if (random(1) < spawnChance && window.Scenes.activeRings.length < MAX_ACTIVE_RINGS) {
+    
+    window.Scenes.fallingFramesSinceSpawn = (window.Scenes.fallingFramesSinceSpawn || 0) + 1;
+    const passiveThreshold = bands.vol <= 0.02 ? 180 : 360;
+    const passiveSpawn = bands.vol <= 0.02 && window.Scenes.fallingFramesSinceSpawn > passiveThreshold;
+    
+    if ((random(1) < spawnChance || passiveSpawn) && window.Scenes.activeRings.length < MAX_ACTIVE_RINGS) {
         // 根據音量大小決定生成數量，大聲時可能一次噴多顆
         let count = bands.vol > 0.35 ? 2 : 1;
         count = min(count, MAX_ACTIVE_RINGS - window.Scenes.activeRings.length);
@@ -196,6 +205,7 @@ window.Scenes.drawNeonBouncingRings = function(bands, pitchHue, peakFlash, beatF
             let startY = -400 + random(-50, 50);
 
             window.Scenes.activeRings.push(new RingParticle(startX, startY, bands, pitchHue));
+            window.Scenes.fallingFramesSinceSpawn = 0;
         }
     }
 
