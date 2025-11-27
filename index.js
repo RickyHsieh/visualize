@@ -80,15 +80,15 @@ const Audio = {
     getFrequencyBands() {
         // 1. 低頻 (Bass): 20-140Hz
         let low = this.getEnergy(20, 140);
-
-        // 2. 中頻 (Mid): 140Hz - 2000Hz
+        
+        // 2. 中頻 (Mid): 140Hz - 2000Hz 
         // (範圍稍微縮小，把 2000Hz 以上讓給高頻)
         let mid = this.getEnergy(140, 2000);
 
         // 3. 高頻 (High): 2000Hz - 16000Hz
         // (範圍擴大：涵蓋了原本的高頻與超高頻區域)
         let rawHigh = this.getEnergy(2000, 16000);
-
+        
         // 【修正高頻沒值】：放大倍率提高到 3.5 倍
         let high = Math.min(rawHigh * 3.5, 255);
 
@@ -112,13 +112,13 @@ const Audio = {
         let maxIndex = 0;
         let sum = 0;
         let count = 0;
-
+        
         let nyquist = sampleRate() / 2;
         let binSize = nyquist / spectrum.length;
-
-        let start = Math.floor(60 / binSize);
-        let end = Math.floor(1200 / binSize);
-
+        
+        let start = Math.floor(60 / binSize); 
+        let end = Math.floor(1200 / binSize); 
+        
         end = Math.min(end, spectrum.length);
 
         for (let i = start; i < end; i++) {
@@ -130,15 +130,15 @@ const Audio = {
                 maxIndex = i;
             }
         }
-
+        
         if (maxVal < 50 || count === 0) {
             return { freq: 0, confidence: 0 };
         }
-
+        
         let avg = sum / count;
         let confidence = avg > 0 ? (maxVal - avg) / 255 : maxVal / 255;
         confidence = constrain(confidence, 0, 1);
-
+        
         let freq = (maxIndex / spectrum.length) * nyquist;
         return { freq, confidence };
     }
@@ -172,16 +172,12 @@ const PitchDetection = {
             const displayFreq = this.smoothedFrequency > 0 ? this.smoothedFrequency : freq;
             this.currentNote = `${displayFreq.toFixed(1)} Hz`;
 
-            // 計算對應的色相
             if (this.currentNoteIndex >= 0) {
-                // 使用十二平均律映射到 360度色環
                 this.pitchHue = (this.currentNoteIndex * 30 + 180) % 360;
             } else {
-                // 備用方案：直接用頻率映射
                 this.pitchHue = map(freq, 40, sampleRate() / 2, 200, 360);
             }
         } else {
-            // 沒有檢測到足夠強的音高時，慢慢衰減
             this.pitchConfidence = lerp(this.pitchConfidence, 0, 0.12);
             this.currentFrequency = 0;
             const displayFreq = Math.max(this.smoothedFrequency, 0);
@@ -200,7 +196,6 @@ const PitchDetection = {
         this.currentNote = "0.0 Hz";
     },
 
-    // 將頻率轉換為音符名稱與索引
     freqToNote(frequency) {
         let n = 12 * (Math.log(frequency / CONFIG.A4) / Math.log(2));
         let n_rounded = Math.round(n);
@@ -211,7 +206,6 @@ const PitchDetection = {
         return CONFIG.NOTES[noteIndex] + octave;
     },
 
-    // 輔助函數：HSB 轉 RGB (用於 UI 顯示顏色)
     hsbToRgb(h, s, b) {
         h = h % 360; s = s / 100; b = b / 100;
         let c = b * s;
@@ -298,7 +292,6 @@ const Camera = {
         return State.cameras[State.scene];
     },
 
-    // 應用相機變換 (在繪製場景前調用)
     update() {
         this.currentCam = this.getActiveCamera();
         push();
@@ -310,12 +303,10 @@ const Camera = {
         rotateX(this.currentCam.rotationX);
     },
 
-    // 結束相機變換 (在繪製場景後調用)
     end() {
         pop();
     },
 
-    // 事件處理
     mousePressed() {
         const cam = this.getActiveCamera();
         if (!cam) return;
@@ -333,7 +324,6 @@ const Camera = {
     mouseDragged() {
         const cam = this.getActiveCamera();
         if (cam && cam.dragging) {
-            // 根據滑鼠拖動更新旋轉角度
             let dx = (mouseX - cam.lastMouseX) * 0.003;
             let dy = (mouseY - cam.lastMouseY) * 0.003;
             cam.rotationY += dx;
@@ -347,7 +337,6 @@ const Camera = {
     mouseWheel(event) {
         const cam = this.getActiveCamera();
         if (!cam) return false;
-        // 根據滾輪調整縮放
         cam.zoom += -event.delta * 0.0006;
         cam.zoom = constrain(cam.zoom, 0.5, 2.4);
         return false;
@@ -368,7 +357,6 @@ const UI = {
             });
         });
 
-        // 麥克風開關按鈕事件
         const micBtn = document.getElementById('micBtn');
         micBtn.addEventListener('click', async () => {
             if (!State.isMicOn) {
@@ -383,7 +371,6 @@ const UI = {
         micBtn.textContent = 'Starting...';
         micBtn.disabled = true;
 
-        // 1. 嘗試恢復 AudioContext (瀏覽器自動播放策略)
         try {
             await userStartAudio();
             console.log('AudioContext resumed');
@@ -391,19 +378,15 @@ const UI = {
             console.warn('userStartAudio warning:', audioErr);
         }
 
-        // 2. 啟動麥克風
         try {
             if (!Audio.mic) {
                 Audio.mic = new p5.AudioIn();
             }
             Audio.mic.start();
-            // 等待一點時間讓麥克風準備好
             await new Promise(resolve => setTimeout(resolve, 400));
 
-            // 連接 FFT 分析器
             Audio.fft.setInput(Audio.mic);
 
-            // 更新狀態
             State.isMicOn = true;
             micBtn.textContent = 'Mic Enabled';
             micBtn.classList.add('active');
@@ -436,7 +419,6 @@ const UI = {
         }
     },
 
-    // 更新畫面上的音高顯示區塊
     updatePitchDisplay() {
         if (!State.isMicOn) {
             let pitchDisplay = document.getElementById('pitchDisplay');
@@ -446,9 +428,6 @@ const UI = {
 
         let pitchDisplay = document.getElementById('pitchDisplay');
         let pitchNote = document.getElementById('pitchNote');
-        let pitchFreq = document.getElementById('pitchFreq');
-        let pitchConfidenceValue = document.getElementById('pitchConfidenceValue');
-        let pitchBarFill = document.getElementById('pitchBarFill');
 
         if (!pitchDisplay) return;
 
@@ -461,7 +440,6 @@ const UI = {
             const freqText = `${Math.max(displayFreq, 0).toFixed(1)} Hz`;
             pitchNote.textContent = freqText;
 
-            // 根據音高改變文字顏色與光暈
             if (PitchDetection.currentNoteIndex >= 0) {
                 let rgb = PitchDetection.hsbToRgb(PitchDetection.pitchHue, 80, 95);
                 pitchNote.style.color = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
@@ -502,7 +480,6 @@ const UI = {
         const camRY = cam ? cam.rotationY.toFixed(2) : '--';
         const camZoom = cam ? cam.zoom.toFixed(2) : '--';
 
-        // 場景描述
         const descMap = {
             'COSMOS': '音高控制色彩，頻譜驅動波動',
             'BASS GEO': '低頻推高方塊，節拍觸發閃光',
@@ -512,7 +489,6 @@ const UI = {
         };
         const desc = descMap[sceneNames[State.scene]] || '';
 
-        // 更新 HTML 內容
         hud.innerHTML = `
             <div class="line">場景 : ${sceneNames[State.scene] || State.scene}</div>
             <div class="line">音高 : ${note}</div>
@@ -521,12 +497,8 @@ const UI = {
             <div class="line">低頻 : ${low}</div>
             <div class="line">中頻 : ${mid}</div>
             <div class="line">高頻 : ${high}</div>
-            <div class="line">超高頻 : ${ultra}</div>
             <div class="line">音量 : ${vol}</div>
-            <div class="line">節拍 : ${beat} / 峰值 : ${peak}</div>
-            <div class="line">Cam X: ${camRX}</div>
-            <div class="line">Cam Y: ${camRY}</div>
-            <div class="line">Zoom : ${camZoom}</div>
+            
             <div class="line">FPS  : ${fps}</div>
             <div class="desc">${desc}</div>
         `;
@@ -537,15 +509,13 @@ const UI = {
 // Main - p5.js 主函數 (Setup & Draw)
 // ============================================================================
 function setup() {
-    // 創建全螢幕 WEBGL 畫布
     let cnv = createCanvas(windowWidth, windowHeight, WEBGL);
     cnv.style('position', 'fixed');
     cnv.style('top', '0'); cnv.style('left', '0'); cnv.style('z-index', '0');
 
-    // 設置繪圖模式
     colorMode(HSB, 360, 100, 100, 1);
     noStroke();
-    pixelDensity(1);
+    pixelDensity(1); 
 
     // 1. Cosmos 場景粒子
     for (let i = 0; i < CONFIG.PARTICLE_COUNT; i++) {
@@ -558,12 +528,12 @@ function setup() {
     }
 
     // 2. Faraday Ripple 場景微珠粒子網格
-    let particleSpacing = 14;
+    let particleSpacing = 14; 
     let gridSize = 800;
-
+    
     let gridW = floor(gridSize / particleSpacing);
     let gridH = floor(gridSize / particleSpacing);
-
+    
     State.faradayParticles = [];
 
     for (let j = 0; j < gridH; j++) {
@@ -571,27 +541,27 @@ function setup() {
             let x = map(i, 0, gridW - 1, -gridSize/2, gridSize/2);
             let z = map(j, 0, gridH - 1, -gridSize/2, gridSize/2);
             State.faradayParticles.push({
-                pos: createVector(x, 0, z),
-                size: 3
+                pos: createVector(x, 0, z), 
+                size: 3 
             });
         }
     }
-
+    
     console.log('Faraday particles initialized:', State.faradayParticles.length);
 
     // 相機初始化
     State.cameras = [
-        createCameraState({ rotationX: -0.25, rotationY: 0 }),
-        createCameraState({ rotationX: -0.3, rotationY: 0.1 }),
-        createCameraState({ rotationX: -0.45, rotationY: 0 }),
-        createCameraState({ rotationX: -0.2, rotationY: 0, zoom: 0.95 }),
-        createCameraState({ rotationX: -0.35, rotationY: 0.15, zoom: 1.05 })
+        createCameraState({ rotationX: -0.25, rotationY: 0 }),         
+        createCameraState({ rotationX: -0.3, rotationY: 0.1 }),        
+        createCameraState({ rotationX: -0.45, rotationY: 0 }),         
+        createCameraState({ rotationX: -0.2, rotationY: 0, zoom: 0.95 }), 
+        createCameraState({ rotationX: -0.35, rotationY: 0.15, zoom: 1.05 }) 
     ];
 
     // ToneRipples 初始化
     State.toneRipples = [];
     for (let i = 0; i < 12; i++) {
-        let baseAmp = 0.2 + sin(i * 0.5) * 0.08;
+        let baseAmp = 0.2 + sin(i * 0.5) * 0.08; 
         State.toneRipples.push({
             amplitude: baseAmp,
             baseAmplitude: baseAmp,
@@ -601,15 +571,12 @@ function setup() {
         });
     }
 
-    // --- 初始化各個模塊 ---
     Audio.init();
     AudioFeatures.init();
     UI.setup();
 
-    // 初始化合成器 (用於 Scene 4 的撞擊音效)
     if (!window.polySynth) {
         window.polySynth = new p5.PolySynth();
-        // 設置 ADSR 包絡，讓聲音短促有力
         if (window.polySynth.setADSR) {
             window.polySynth.setADSR(0.01, 0.1, 0.0, 0.2);
         }
@@ -621,14 +588,11 @@ function setup() {
     console.log('System initialized. Faraday particles:', State.faradayParticles.length);
 }
 
-// p5.js 主繪圖迴圈
 function draw() {
-    background(0);
+    background(0); 
 
-    // --- 階段 1：麥克風關閉時的待機畫面 ---
     if (!State.isMicOn) {
         push();
-        // 緩慢旋轉的待機星空
         rotateX(-0.3 + sin(frameCount * 0.002) * 0.02);
         rotateY(frameCount * 0.0003);
         if (typeof Scenes.drawStaticStars === 'function') {
@@ -636,15 +600,13 @@ function draw() {
         }
         pop();
         UI.updateDataHud({ low: 0, mid: 0, high: 0, vol: 0 });
-        return;
+        return; 
     }
 
-    // --- 階段 2：更新音頻分析數據 ---
     Audio.update();
     AudioFeatures.update();
     PitchDetection.update();
 
-    // 獲取當前頻段數據
     let bands = Audio.getFrequencyBands();
 
     // 更新 Faraday Ripple 物理 (雖然 Scene 4 已改版，但保留舊結構相容性)
@@ -655,40 +617,33 @@ function draw() {
         let ripple = State.toneRipples[i];
         let target = ripple.baseAmplitude;
 
-        // 如果當前檢測到的音調索引與此漣漪對應，則提高目標振幅
         if (hasAudio && currentPitchIndex >= 0 && currentPitchIndex < 12 && i === currentPitchIndex) {
             let audioBoost = map(bands.vol, 0, 0.3, 0.4, 1.2);
             target = ripple.baseAmplitude + audioBoost;
         }
 
-        // Attack/Release 平滑過渡邏輯
         if (target > ripple.amplitude) {
-            // Attack：快速上升
             ripple.amplitude = lerp(ripple.amplitude, target, 0.15);
-            // 如果振幅顯著增加，標記為活躍並重置時間以產生新波紋
             if (target > ripple.baseAmplitude * 1.1) {
                 if (!ripple.isActive) ripple.time = 0;
                 ripple.isActive = true;
             }
         } else {
-            // Release：緩慢下降回基礎值
             ripple.amplitude = lerp(ripple.amplitude, target, ripple.releaseRate);
             if (abs(ripple.amplitude - ripple.baseAmplitude) < 0.05) {
                 ripple.isActive = false;
             }
         }
 
-        // 更新時間參數用於波紋擴散動畫
         if (ripple.isActive) {
-            ripple.time += 0.25;
+            ripple.time += 0.25; 
         } else {
-            ripple.time += 0.08;
+            ripple.time += 0.08; 
         }
     }
 
-    Camera.update();
+    Camera.update(); 
 
-    // 根據當前場景索引調用對應的繪圖函數
     if (State.scene === 0 && typeof Scenes.drawCosmosParticles === 'function') {
         Scenes.drawCosmosParticles(bands, PitchDetection.pitchHue, AudioFeatures.peakFlash, AudioFeatures.beatFlash);
     } else if (State.scene === 1 && typeof Scenes.drawBassGeometry === 'function') {
@@ -696,7 +651,6 @@ function draw() {
     } else if (State.scene === 2 && typeof Scenes.drawParticleHeightmap === 'function') {
         Scenes.drawParticleHeightmap(bands, PitchDetection.pitchHue, AudioFeatures.peakFlash, AudioFeatures.beatFlash);
     } else if (State.scene === 3 && typeof Scenes.drawFaradayMicrobeads === 'function') {
-        // 準備 Faraday 場景所需的數據包
         let pitchData = {
             currentNote: PitchDetection.currentNote,
             currentPitchIndex: PitchDetection.currentNoteIndex,
@@ -707,7 +661,7 @@ function draw() {
             beatFlash: AudioFeatures.beatFlash,
             spectrum: Audio.spectrum
         };
-
+        
         Scenes.drawFaradayMicrobeads(
             State.faradayParticles,
             bands,
@@ -722,21 +676,14 @@ function draw() {
             AudioFeatures.peakFlash,
             AudioFeatures.beatFlash
         );
-    } else {
-        // 除錯：如果找不到場景函數
-        // console.warn('Scene function not found for scene ID:', State.scene);
     }
 
-    Camera.end();
+    Camera.end(); 
 
-    // --- 階段 5：更新 UI 顯示 ---
     UI.updatePitchDisplay();
     UI.updateDataHud(bands);
 }
 
-// ============================================================================
-// 事件處理函數 (p5.js Events)
-// ============================================================================
 function mousePressed() {
     Camera.mousePressed();
 }
@@ -747,12 +694,12 @@ function mouseReleased() {
 
 function mouseDragged() {
     Camera.mouseDragged();
-    return false;
+    return false; 
 }
 
 function mouseWheel(event) {
     Camera.mouseWheel(event);
-    return false;
+    return false; 
 }
 
 function windowResized() {
