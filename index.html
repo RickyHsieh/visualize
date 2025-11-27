@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio Reactive Visualizer</title>
+    <style>
+        /* Basic reset for fullscreen canvas */
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+
+        /* UI Overlay styles */
+        #ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10; /* Above the p5 canvas */
+            pointer-events: none; /* Allows mouse events to pass through to the canvas by default */
+        }
+
+        /* Liquid Glass Menu - Top Navigation */
+        #controls {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            pointer-events: all;
+            padding: 20px;
+            z-index: 100;
+            
+            /* Fully transparent convex lens - no blur */
+            background: rgba(20, 20, 40, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            
+            /* Liquid flow animation background - very subtle */
+            background-image: 
+                linear-gradient(
+                    90deg,
+                    rgba(100, 150, 255, 0.08) 0%,
+                    rgba(150, 100, 255, 0.12) 25%,
+                    rgba(255, 100, 200, 0.08) 50%,
+                    rgba(100, 200, 255, 0.12) 75%,
+                    rgba(100, 150, 255, 0.08) 100%
+                );
+            background-size: 200% 100%;
+            animation: liquidFlow 8s ease-in-out infinite;
+            
+            /* Convex lens effect - enhanced shadows for depth */
+            box-shadow: 
+                0 4px 30px rgba(0, 0, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                0 0 80px rgba(100, 150, 255, 0.15),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        @keyframes liquidFlow {
+            0%, 100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        button {
+            position: relative;
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+            font-weight: 500;
+            font-size: 14px;
+            overflow: hidden;
+            
+            /* Liquid background animation - transparent */
+            background-image: linear-gradient(
+                135deg,
+                rgba(100, 150, 255, 0.15) 0%,
+                rgba(150, 100, 255, 0.15) 50%,
+                rgba(255, 100, 200, 0.15) 100%
+            );
+            background-size: 200% 200%;
+            animation: liquidButton 6s ease infinite;
+            
+            /* Convex lens button effect */
+            box-shadow: 
+                0 2px 15px rgba(0, 0, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2),
+                0 0 30px rgba(100, 150, 255, 0.1);
+        }
+
+        @keyframes liquidButton {
+            0%, 100% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent
+            );
+            transition: left 0.5s;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(150, 200, 255, 0.7);
+            transform: translateY(-2px);
+            box-shadow: 
+                0 8px 25px rgba(100, 150, 255, 0.4),
+                0 0 30px rgba(150, 200, 255, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        button:hover::before {
+            left: 100%;
+        }
+
+        button.active {
+            background: linear-gradient(
+                135deg,
+                rgba(100, 150, 255, 0.25),
+                rgba(150, 100, 255, 0.25)
+            );
+            border-color: rgba(150, 200, 255, 0.9);
+            box-shadow: 
+                0 0 40px rgba(100, 150, 255, 0.6),
+                0 0 80px rgba(150, 200, 255, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+                0 4px 20px rgba(100, 150, 255, 0.3);
+            transform: translateY(-1px);
+        }
+
+        button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 2px;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(150, 200, 255, 0.8),
+                transparent
+            );
+            border-radius: 2px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 0.5;
+                width: 60%;
+            }
+            50% {
+                opacity: 1;
+                width: 80%;
+            }
+        }
+
+        #micBtn {
+            background: linear-gradient(
+                135deg,
+                rgba(255, 100, 100, 0.2),
+                rgba(200, 50, 50, 0.2)
+            );
+            border-color: rgba(255, 150, 150, 0.6);
+        }
+
+        #micBtn.active {
+            background: linear-gradient(
+                135deg,
+                rgba(100, 255, 150, 0.25),
+                rgba(50, 200, 100, 0.25)
+            );
+            border-color: rgba(150, 255, 200, 0.9);
+            box-shadow: 
+                0 0 40px rgba(100, 255, 150, 0.6),
+                0 0 80px rgba(150, 255, 200, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.5),
+                inset 0 -1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        /* Hint Text */
+        #hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            text-align: center;
+            opacity: 0.7;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        /* Pitch Display */
+        #pitchDisplay {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 10px;
+            min-width: 300px;
+        }
+
+        #pitchNote {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 5px 0;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        #pitchFreq {
+            font-size: 20px;
+            opacity: 0.9;
+            margin: 5px 0;
+        }
+
+        #pitchConfidence {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 8px;
+        }
+
+        #pitchBar {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        #pitchBarFill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #ec4899);
+            border-radius: 3px;
+            transition: width 0.1s ease;
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/addons/p5.sound.js"></script>
+    <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+</head>
+<body>
+<div id="ui">
+    <div id="controls">
+        <button id="micBtn">Start Mic</button>
+        <button data-scene="0" class="active">Scene 1: Cosmos</button>
+        <button data-scene="1">Scene 2: Bass Geometry</button>
+        <button data-scene="2">Scene 3: Heightmap</button>
+        <button data-scene="3">Scene 4: Faraday Ripple</button>
+    </div>
+    <div id="hint">
+        Drag mouse to rotate, scroll wheel to zoom.
+    </div>
+    <div id="pitchDisplay" style="display: none;">
+        <div id="pitchNote">i am Listening</div>
+        <div id="pitchFreq">-- Hz</div>
+        <div id="pitchConfidence">
+            <div>Confidence: <span id="pitchConfidenceValue">0%</span></div>
+            <div id="pitchBar"><div id="pitchBarFill" style="width: 0%"></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- 載入場景文件（必須在主文件之前） -->
+<script src="scenes/scene-static.js"></script>
+<script src="scenes/scene-cosmos.js"></script>
+<script src="scenes/scene-bass.js"></script>
+<script src="scenes/scene-heightmap.js"></script>
+<script src="scenes/scene-faraday.js"></script>
+
+<!-- 載入主文件 -->
+<script src="index.js"></script>
+</body>
+</html>
